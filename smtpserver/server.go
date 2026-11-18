@@ -867,15 +867,6 @@ func ServeTLSConn(listenerName string, hostname dns.Domain, conn *tls.Conn, tlsC
 	serve(listenerName, mox.Cid(), hostname, tlsConfig, conn, resolver, submission, true, viaHTTPS, true, maxMsgSize, true, true, requireTLS, nil, 0)
 }
 
-// isRFC1918 returns whether ip is a private IPv4 address as defined in RFC 1918:
-// 10.0.0.0/8, 172.16.0.0/12 or 192.168.0.0/16. IPv4-mapped IPv6 addresses are
-// treated as IPv4. Other non-public addresses, such as loopback and IPv6 unique
-// local addresses, are not RFC 1918 addresses.
-func isRFC1918(ip net.IP) bool {
-	ip4 := ip.To4()
-	return ip4 != nil && ip4.IsPrivate()
-}
-
 func serve(listenerName string, cid int64, hostname dns.Domain, tlsConfig *tls.Config, nc net.Conn, resolver dns.Resolver, submission, xtls, viaHTTPS, noTLSClientAuth bool, maxMessageSize int64, requireTLSForAuth, requireTLSForDelivery, requireTLS bool, dnsBLs []dns.Domain, firstTimeSenderDelay time.Duration) {
 	var localIP, remoteIP net.IP
 	if a, ok := nc.LocalAddr().(*net.TCPAddr); ok {
@@ -2264,7 +2255,10 @@ func (c *conn) cmdData(p *parser) {
 		}
 	}
 	recvBy := mox.Conf.Static.HostnameDomain.XName(c.msgsmtputf8)
-	if isRFC1918(c.localIP) && !mox.Conf.Static.ShowPrivateReceivedIP {
+	// Hide internal network details. IsPrivate is true for RFC 1918 IPv4 addresses
+	// (also IPv4-mapped) and RFC 4193 IPv6 unique local addresses (fc00::/7), not
+	// for loopback or link-local.
+	if c.localIP.IsPrivate() && !mox.Conf.Static.ShowPrivateReceivedIP {
 		recvBy += " (<REDACTED>)"
 	} else {
 		recvBy += " (" + smtp.AddressLiteral(c.localIP) + ")"

@@ -669,8 +669,8 @@ func TestDelivery(t *testing.T) {
 }
 
 // Test that the local IP of the server is replaced with "<REDACTED>" in the
-// Received header when it is an RFC 1918 address, unless ShowPrivateReceivedIP is
-// set.
+// Received header when it is a private address (RFC 1918 or RFC 4193), unless
+// ShowPrivateReceivedIP is set.
 func TestReceivedPrivateIP(t *testing.T) {
 	resolver := dns.MockResolver{
 		A: map[string][]string{
@@ -730,7 +730,13 @@ func TestReceivedPrivateIP(t *testing.T) {
 		{"172.32.1.2", false, true}, // Just outside 172.16.0.0/12.
 		{"198.51.100.1", false, true},
 		{"127.0.0.1", false, true},
-		{"fd00::1", false, true}, // Unique local, not RFC 1918.
+		{"fd12:3456:789a:1::1", false, false}, // Unique local, RFC 4193.
+		{"fc00::1", false, false},             // Start of fc00::/7.
+		{"fdff:ffff:ffff:ffff::1", false, false},
+		{"fd00::1", true, true},
+		{"fe00::1", false, true}, // Just outside fc00::/7.
+		{"fe80::1", false, true}, // Link-local, not private.
+		{"::1", false, true},
 		{"2001:db8::1", false, true},
 	}
 	for _, tc := range tests {
