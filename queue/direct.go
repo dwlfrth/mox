@@ -443,7 +443,8 @@ func deliverHost(log mlog.Log, resolver dns.Resolver, dialer smtpclient.Dialer, 
 	if err != nil {
 		return deliverResult{err: fmt.Errorf("open message file: %v", err)}
 	}
-	msgr := store.FileMsgReader(m0.MsgPrefix, f)
+	prefix, size := m0.deliveryPrefix()
+	msgr := store.FileMsgReader(prefix, f)
 	defer func() {
 		err := msgr.Close()
 		log.Check(err, "closing message after delivery attempt")
@@ -701,7 +702,6 @@ func deliverHost(log mlog.Log, resolver dns.Resolver, dialer smtpclient.Dialer, 
 	smtputf8 := m0.SMTPUTF8
 	var msg io.Reader = msgr
 	resetReader := msgr.Reset
-	size := m0.Size
 	if m0.DSNUTF8 != nil && sc.Supports8BITMIME() && sc.SupportsSMTPUTF8() {
 		has8bit = true
 		smtputf8 = true

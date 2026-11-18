@@ -783,28 +783,31 @@ const RoutesEditor = (kind: string, transports: { [key: string]: api.Transport }
 							dom.th('To domain'),
 							dom.th('Minimum attempts'),
 							dom.th('Transport'),
+							dom.th('Omit DKIM signatures', attr.title('Leave out the DKIM-Signature headers mox added when delivering through this route. For smarthosts that modify messages and add their own DKIM signature.')),
 							dom.th(
 								dom.clickbutton('Add', function click() {
 									routes = routeRows.map(rr => rr.gather())
-									routes.push({FromDomain: [], ToDomain: [], MinimumAttempts: 0, Transport: transportNames[0]})
+									routes.push({FromDomain: [], ToDomain: [], MinimumAttempts: 0, Transport: transportNames[0], OmitDKIMSignatures: false})
 									render()
 								}),
 							),
 						),
 					),
 					dom.tbody(
-						(routes || []).length === 0 ? dom.tr(dom.td(attr.colspan('5'), 'No routes.')) : [],
+						(routes || []).length === 0 ? dom.tr(dom.td(attr.colspan('6'), 'No routes.')) : [],
 						routeRows=(routes || []).map((r, index) => {
 							let fromDomain = dom.input(attr.value((r.FromDomain || []).join(',')))
 							let toDomain = dom.input(attr.value((r.ToDomain || []).join(',')))
 							let minimumAttempts = dom.input(attr.value(''+r.MinimumAttempts))
 							let transport = dom.select(attr.required(''), transportNames.map(s => dom.option(s, s === r.Transport ? attr.selected('') : [])))
+							let omitDKIMSignatures = dom.input(attr.type('checkbox'), r.OmitDKIMSignatures ? attr.checked('') : [])
 
 							const tr = dom.tr(
 								dom.td(fromDomain),
 								dom.td(toDomain),
 								dom.td(minimumAttempts),
 								dom.td(transport),
+								dom.td(omitDKIMSignatures),
 								dom.td(
 									dom.clickbutton('Remove', function click() {
 										routeRows.splice(index, 1)
@@ -821,6 +824,7 @@ const RoutesEditor = (kind: string, transports: { [key: string]: api.Transport }
 										ToDomain: toDomain.value ? toDomain.value.split(',') : [],
 										MinimumAttempts: parseInt(minimumAttempts.value) || 0,
 										Transport: transport.value,
+										OmitDKIMSignatures: omitDKIMSignatures.checked,
 									}
 								},
 							}
@@ -836,7 +840,7 @@ const RoutesEditor = (kind: string, transports: { [key: string]: api.Transport }
 				'No '+kind+' routes configured. ',
 				dom.clickbutton('Add', function click() {
 					routes = routeRows.map(rr => rr.gather())
-					routes.push({FromDomain: [], ToDomain: [], MinimumAttempts: 0, Transport: transportNames[0]})
+					routes.push({FromDomain: [], ToDomain: [], MinimumAttempts: 0, Transport: transportNames[0], OmitDKIMSignatures: false})
 					render()
 				}),
 			)

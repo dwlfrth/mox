@@ -205,7 +205,8 @@ func deliverSubmit(qlog mlog.Log, resolver dns.Resolver, dialer smtpclient.Diale
 		size = int64(len(m0.DSNUTF8))
 	} else {
 		req8bit = m0.Has8bit // todo: not require this, but just try to submit?
-		size = m0.Size
+		var prefix []byte
+		prefix, size = m0.deliveryPrefix()
 
 		p := m0.MessagePath()
 		f, err := os.Open(p)
@@ -215,7 +216,7 @@ func deliverSubmit(qlog mlog.Log, resolver dns.Resolver, dialer smtpclient.Diale
 			failMsgsDB(qlog, msgs, m0.DialedIPs, backoff, dsn.NameIP{}, submiterr)
 			return
 		}
-		msgr = store.FileMsgReader(m0.MsgPrefix, f)
+		msgr = store.FileMsgReader(prefix, f)
 		defer func() {
 			if msgr != nil {
 				err := msgr.Close()

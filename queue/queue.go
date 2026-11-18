@@ -159,6 +159,10 @@ type Msg struct {
 	// rules apply.
 	Transport string
 
+	// Set during a delivery attempt when the route for the attempt has
+	// OmitDKIMSignatures set, not stored in the database.
+	omitDKIMSignatures bool
+
 	// RequireTLS influences TLS verification during delivery.
 	//
 	// If nil, the recipient domain policy is followed (MTA-STS and/or DANE), falling
@@ -1452,21 +1456,23 @@ func deliver(log mlog.Log, resolver dns.Resolver, m0 Msg) {
 		return
 	}
 
-	resolveTransport := func(mm Msg) (string, config.Transport, bool) {
+	// Returns the transport name and transport, whether the DKIM-Signature headers
+	// mox added must be left out, and whether the transport was found.
+	resolveTransport := func(mm Msg) (string, config.Transport, bool, bool) {
 		if mm.Transport != "" {
 			transport, ok := mox.Conf.Static.Transports[mm.Transport]
 			if !ok {
-				return "", config.Transport{}, false
+				return "", config.Transport{}, false, false
 			}
-			return mm.Transport, transport, ok
+			return mm.Transport, transport, false, ok
 		}
 		route := findRoute(mm.Attempts, mm)
-		return route.Transport, route.ResolvedTransport, true
+		return route.Transport, route.ResolvedTransport, route.OmitDKIMSignatures, true
 	}
 
 	// Find route for transport to use for delivery attempt.
 	m0.Attempts--
-	transportName, transport, transportOK := resolveTransport(m0)
+	transportName, transport, omitDKIMSignatures, transportOK := resolveTransport(m0)
 	m0.Attempts++
 	if !transportOK {
 		failMsgsTx(qlog, xtx, []*Msg{&m0}, m0.DialedIPs, backoff, remoteMTA, fmt.Errorf("cannot find transport %q", m0.Transport))
@@ -1499,8 +1505,8 @@ func deliver(log mlog.Log, resolver dns.Resolver, m0 Msg) {
 				if mrtls != xmrtls || mrtls && *m0.RequireTLS != *xm.RequireTLS {
 					return nil
 				}
-				tn, _, ok := resolveTransport(xm)
-				if ok && tn == transportName {
+				tn, _, omit, ok := resolveTransport(xm)
+				if ok && tn == transportName && omit == omitDKIMSignatures {
 					msgs = append(msgs, &xm)
 				}
 				return nil
@@ -1532,6 +1538,14 @@ func deliver(log mlog.Log, resolver dns.Resolver, m0 Msg) {
 		return
 	}
 	xtx = nil
+
+	// Only in memory, for this attempt. A later attempt can match a different route.
+	if omitDKIMSignatures {
+		for _, m := range msgs {
+			m.omitDKIMSignatures = true
+		}
+		qlog.Debug("omitting dkim signatures added by mox for route")
+	}
 
 	if len(msgs) > 1 {
 		ids := make([]int64, len(msgs))
@@ -1670,6 +1684,40 @@ func deliver(log mlog.Log, resolver dns.Resolver, m0 Msg) {
 		}
 		recipientDomainResult, hostResults = deliverDirect(qlog, resolver, dialer, ourHostname, transportName, transport.Direct, msgs, backoff)
 	}
+}
+
+// deliveryPrefix returns the prefix and full size of the message to send for
+// this delivery attempt, without the DKIM-Signature headers mox added if the
+// route for the attempt has OmitDKIMSignatures set.
+func (m Msg) deliveryPrefix() ([]byte, int64) {
+	if !m.omitDKIMSignatures {
+		return m.MsgPrefix, m.Size
+	}
+	prefix := omitDKIMSignatures(m.MsgPrefix)
+	return prefix, m.Size - int64(len(m.MsgPrefix)-len(prefix))
+}
+
+// omitDKIMSignatures returns the header fields in prefix without DKIM-Signature
+// header fields, including their continuation lines.
+func omitDKIMSignatures(prefix []byte) []byte {
+	r := make([]byte, 0, len(prefix))
+	var skip bool
+	for len(prefix) > 0 {
+		line := prefix
+		if i := bytes.IndexByte(prefix, '\n'); i >= 0 {
+			line = prefix[:i+1]
+		}
+		prefix = prefix[len(line):]
+		// Continuation lines belong to the previous header field. ../rfc/5322:475
+		if line[0] != ' ' && line[0] != '\t' {
+			name, _, _ := bytes.Cut(line, []byte(":"))
+			skip = strings.EqualFold(strings.TrimRight(string(name), " \t"), "DKIM-Signature")
+		}
+		if !skip {
+			r = append(r, line...)
+		}
+	}
+	return r
 }
 
 func findRoute(attempt int, m Msg) config.Route {

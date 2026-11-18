@@ -332,6 +332,7 @@ export interface Route {
 	ToDomain?: string[] | null
 	MinimumAttempts: number
 	Transport: string
+	OmitDKIMSignatures: boolean
 	FromDomainASCII?: string[] | null
 	ToDomainASCII?: string[] | null
 }
@@ -1202,7 +1203,7 @@ export const types: TypenameMap = {
 	"DMARC": {"Name":"DMARC","Docs":"","Fields":[{"Name":"Localpart","Docs":"","Typewords":["string"]},{"Name":"Domain","Docs":"","Typewords":["string"]},{"Name":"Account","Docs":"","Typewords":["string"]},{"Name":"Mailbox","Docs":"","Typewords":["string"]},{"Name":"ParsedLocalpart","Docs":"","Typewords":["Localpart"]},{"Name":"DNSDomain","Docs":"","Typewords":["Domain"]}]},
 	"MTASTS": {"Name":"MTASTS","Docs":"","Fields":[{"Name":"PolicyID","Docs":"","Typewords":["string"]},{"Name":"Mode","Docs":"","Typewords":["Mode"]},{"Name":"MaxAge","Docs":"","Typewords":["int64"]},{"Name":"MX","Docs":"","Typewords":["[]","string"]}]},
 	"TLSRPT": {"Name":"TLSRPT","Docs":"","Fields":[{"Name":"Localpart","Docs":"","Typewords":["string"]},{"Name":"Domain","Docs":"","Typewords":["string"]},{"Name":"Account","Docs":"","Typewords":["string"]},{"Name":"Mailbox","Docs":"","Typewords":["string"]},{"Name":"ParsedLocalpart","Docs":"","Typewords":["Localpart"]},{"Name":"DNSDomain","Docs":"","Typewords":["Domain"]}]},
-	"Route": {"Name":"Route","Docs":"","Fields":[{"Name":"FromDomain","Docs":"","Typewords":["[]","string"]},{"Name":"ToDomain","Docs":"","Typewords":["[]","string"]},{"Name":"MinimumAttempts","Docs":"","Typewords":["int32"]},{"Name":"Transport","Docs":"","Typewords":["string"]},{"Name":"FromDomainASCII","Docs":"","Typewords":["[]","string"]},{"Name":"ToDomainASCII","Docs":"","Typewords":["[]","string"]}]},
+	"Route": {"Name":"Route","Docs":"","Fields":[{"Name":"FromDomain","Docs":"","Typewords":["[]","string"]},{"Name":"ToDomain","Docs":"","Typewords":["[]","string"]},{"Name":"MinimumAttempts","Docs":"","Typewords":["int32"]},{"Name":"Transport","Docs":"","Typewords":["string"]},{"Name":"OmitDKIMSignatures","Docs":"","Typewords":["bool"]},{"Name":"FromDomainASCII","Docs":"","Typewords":["[]","string"]},{"Name":"ToDomainASCII","Docs":"","Typewords":["[]","string"]}]},
 	"Alias": {"Name":"Alias","Docs":"","Fields":[{"Name":"Addresses","Docs":"","Typewords":["[]","string"]},{"Name":"PostPublic","Docs":"","Typewords":["bool"]},{"Name":"ListMembers","Docs":"","Typewords":["bool"]},{"Name":"AllowMsgFrom","Docs":"","Typewords":["bool"]},{"Name":"LocalpartStr","Docs":"","Typewords":["string"]},{"Name":"Domain","Docs":"","Typewords":["Domain"]},{"Name":"ParsedAddresses","Docs":"","Typewords":["[]","AliasAddress"]}]},
 	"AliasAddress": {"Name":"AliasAddress","Docs":"","Fields":[{"Name":"Address","Docs":"","Typewords":["Address"]},{"Name":"AccountName","Docs":"","Typewords":["string"]},{"Name":"Destination","Docs":"","Typewords":["Destination"]}]},
 	"Address": {"Name":"Address","Docs":"","Fields":[{"Name":"Localpart","Docs":"","Typewords":["Localpart"]},{"Name":"Domain","Docs":"","Typewords":["Domain"]}]},
