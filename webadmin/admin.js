@@ -284,7 +284,7 @@
 		"DMARC": { "Name": "DMARC", "Docs": "", "Fields": [{ "Name": "Localpart", "Docs": "", "Typewords": ["string"] }, { "Name": "Domain", "Docs": "", "Typewords": ["string"] }, { "Name": "Account", "Docs": "", "Typewords": ["string"] }, { "Name": "Mailbox", "Docs": "", "Typewords": ["string"] }, { "Name": "ParsedLocalpart", "Docs": "", "Typewords": ["Localpart"] }, { "Name": "DNSDomain", "Docs": "", "Typewords": ["Domain"] }] },
 		"MTASTS": { "Name": "MTASTS", "Docs": "", "Fields": [{ "Name": "PolicyID", "Docs": "", "Typewords": ["string"] }, { "Name": "Mode", "Docs": "", "Typewords": ["Mode"] }, { "Name": "MaxAge", "Docs": "", "Typewords": ["int64"] }, { "Name": "MX", "Docs": "", "Typewords": ["[]", "string"] }] },
 		"TLSRPT": { "Name": "TLSRPT", "Docs": "", "Fields": [{ "Name": "Localpart", "Docs": "", "Typewords": ["string"] }, { "Name": "Domain", "Docs": "", "Typewords": ["string"] }, { "Name": "Account", "Docs": "", "Typewords": ["string"] }, { "Name": "Mailbox", "Docs": "", "Typewords": ["string"] }, { "Name": "ParsedLocalpart", "Docs": "", "Typewords": ["Localpart"] }, { "Name": "DNSDomain", "Docs": "", "Typewords": ["Domain"] }] },
-		"Route": { "Name": "Route", "Docs": "", "Fields": [{ "Name": "FromDomain", "Docs": "", "Typewords": ["[]", "string"] }, { "Name": "ToDomain", "Docs": "", "Typewords": ["[]", "string"] }, { "Name": "MinimumAttempts", "Docs": "", "Typewords": ["int32"] }, { "Name": "Transport", "Docs": "", "Typewords": ["string"] }, { "Name": "FromDomainASCII", "Docs": "", "Typewords": ["[]", "string"] }, { "Name": "ToDomainASCII", "Docs": "", "Typewords": ["[]", "string"] }] },
+		"Route": { "Name": "Route", "Docs": "", "Fields": [{ "Name": "FromDomain", "Docs": "", "Typewords": ["[]", "string"] }, { "Name": "ToDomain", "Docs": "", "Typewords": ["[]", "string"] }, { "Name": "MinimumAttempts", "Docs": "", "Typewords": ["int32"] }, { "Name": "Transport", "Docs": "", "Typewords": ["string"] }, { "Name": "OmitDKIMSignatures", "Docs": "", "Typewords": ["bool"] }, { "Name": "FromDomainASCII", "Docs": "", "Typewords": ["[]", "string"] }, { "Name": "ToDomainASCII", "Docs": "", "Typewords": ["[]", "string"] }] },
 		"Alias": { "Name": "Alias", "Docs": "", "Fields": [{ "Name": "Addresses", "Docs": "", "Typewords": ["[]", "string"] }, { "Name": "PostPublic", "Docs": "", "Typewords": ["bool"] }, { "Name": "ListMembers", "Docs": "", "Typewords": ["bool"] }, { "Name": "AllowMsgFrom", "Docs": "", "Typewords": ["bool"] }, { "Name": "LocalpartStr", "Docs": "", "Typewords": ["string"] }, { "Name": "Domain", "Docs": "", "Typewords": ["Domain"] }, { "Name": "ParsedAddresses", "Docs": "", "Typewords": ["[]", "AliasAddress"] }] },
 		"AliasAddress": { "Name": "AliasAddress", "Docs": "", "Fields": [{ "Name": "Address", "Docs": "", "Typewords": ["Address"] }, { "Name": "AccountName", "Docs": "", "Typewords": ["string"] }, { "Name": "Destination", "Docs": "", "Typewords": ["Destination"] }] },
 		"Address": { "Name": "Address", "Docs": "", "Fields": [{ "Name": "Localpart", "Docs": "", "Typewords": ["Localpart"] }, { "Name": "Domain", "Docs": "", "Typewords": ["Domain"] }] },
@@ -1969,16 +1969,17 @@
 				e.stopPropagation();
 				e.preventDefault();
 				await check(routesFieldset, save(routeRows.map((rr) => rr.gather())));
-			}, "submit"), routesFieldset = dom.fieldset(dom.table(dom.thead(dom.tr(dom.th("From domain"), dom.th("To domain"), dom.th("Minimum attempts"), dom.th("Transport"), dom.th(dom.clickbutton("Add", /* @__PURE__ */ __name(function click() {
+			}, "submit"), routesFieldset = dom.fieldset(dom.table(dom.thead(dom.tr(dom.th("From domain"), dom.th("To domain"), dom.th("Minimum attempts"), dom.th("Transport"), dom.th("Omit DKIM signatures", attr.title("Leave out the DKIM-Signature headers mox added when delivering through this route. For smarthosts that modify messages and add their own DKIM signature.")), dom.th(dom.clickbutton("Add", /* @__PURE__ */ __name(function click() {
 				routes = routeRows.map((rr) => rr.gather());
-				routes.push({ FromDomain: [], ToDomain: [], MinimumAttempts: 0, Transport: transportNames[0] });
+				routes.push({ FromDomain: [], ToDomain: [], MinimumAttempts: 0, Transport: transportNames[0], OmitDKIMSignatures: false });
 				render();
-			}, "click"))))), dom.tbody((routes || []).length === 0 ? dom.tr(dom.td(attr.colspan("5"), "No routes.")) : [], routeRows = (routes || []).map((r, index2) => {
+			}, "click"))))), dom.tbody((routes || []).length === 0 ? dom.tr(dom.td(attr.colspan("6"), "No routes.")) : [], routeRows = (routes || []).map((r, index2) => {
 				let fromDomain = dom.input(attr.value((r.FromDomain || []).join(",")));
 				let toDomain = dom.input(attr.value((r.ToDomain || []).join(",")));
 				let minimumAttempts = dom.input(attr.value("" + r.MinimumAttempts));
 				let transport = dom.select(attr.required(""), transportNames.map((s) => dom.option(s, s === r.Transport ? attr.selected("") : [])));
-				const tr = dom.tr(dom.td(fromDomain), dom.td(toDomain), dom.td(minimumAttempts), dom.td(transport), dom.td(dom.clickbutton("Remove", /* @__PURE__ */ __name(function click() {
+				let omitDKIMSignatures = dom.input(attr.type("checkbox"), r.OmitDKIMSignatures ? attr.checked("") : []);
+				const tr = dom.tr(dom.td(fromDomain), dom.td(toDomain), dom.td(minimumAttempts), dom.td(transport), dom.td(omitDKIMSignatures), dom.td(dom.clickbutton("Remove", /* @__PURE__ */ __name(function click() {
 					routeRows.splice(index2, 1);
 					routes = routeRows.map((rr) => rr.gather());
 					render();
@@ -1990,7 +1991,8 @@
 							FromDomain: fromDomain.value ? fromDomain.value.split(",") : [],
 							ToDomain: toDomain.value ? toDomain.value.split(",") : [],
 							MinimumAttempts: parseInt(minimumAttempts.value) || 0,
-							Transport: transport.value
+							Transport: transport.value,
+							OmitDKIMSignatures: omitDKIMSignatures.checked
 						};
 					}, "gather")
 				};
@@ -1998,7 +2000,7 @@
 			if (!routesElem && (routes || []).length === 0) {
 				elem = dom.div("No " + kind + " routes configured. ", dom.clickbutton("Add", /* @__PURE__ */ __name(function click() {
 					routes = routeRows.map((rr) => rr.gather());
-					routes.push({ FromDomain: [], ToDomain: [], MinimumAttempts: 0, Transport: transportNames[0] });
+					routes.push({ FromDomain: [], ToDomain: [], MinimumAttempts: 0, Transport: transportNames[0], OmitDKIMSignatures: false });
 					render();
 				}, "click")));
 			}
