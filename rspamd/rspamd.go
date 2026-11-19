@@ -1,5 +1,6 @@
 // Package rspamd is a minimal client for the HTTP API of the rspamd spam
-// filtering system, for checking incoming messages.
+// filtering system, for checking incoming messages and training rspamd with
+// messages users mark as (non)junk.
 //
 // See https://docs.rspamd.com/developers/protocol/.
 package rspamd

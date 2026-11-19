@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -14,6 +15,7 @@ import (
 	"github.com/mjl-/mox/junk"
 	"github.com/mjl-/mox/mlog"
 	"github.com/mjl-/mox/mox-"
+	"github.com/mjl-/mox/rspamd"
 )
 
 // ErrNoJunkFilter indicates user did not configure/enable a junk filter.
@@ -104,10 +106,31 @@ func (a *Account) RetrainMessages(ctx context.Context, log mlog.Log, tx *bstore.
 
 // RetrainMessage untrains and/or trains a message, if relevant given m.TrainedJunk
 // and m.Junk/m.Notjunk. Updates m.TrainedJunk after retraining.
+//
+// With rspamd configured, a message trained as (non)junk is also queued for
+// training rspamd, see rspamd.QueueLearn.
 func (a *Account) RetrainMessage(ctx context.Context, log mlog.Log, tx *bstore.Tx, jf *junk.Filter, m *Message) error {
+	return a.retrainMessage(ctx, log, tx, jf, m, true)
+}
+
+// retrainMessage is RetrainMessage, with learnRspamd indicating whether rspamd
+// is trained too. It is false when adding messages, e.g. during delivery, where
+// training rspamd would teach it its own verdict. Only a change of the junk flags
+// of an existing message, e.g. a move by the user, trains rspamd.
+func (a *Account) retrainMessage(ctx context.Context, log mlog.Log, tx *bstore.Tx, jf *junk.Filter, m *Message, learnRspamd bool) error {
 	need, untrain, untrainJunk, train, trainJunk := m.needsTraining()
 	if !need {
 		return nil
+	}
+
+	// Queued before training our own junk filter, which skips messages it cannot
+	// parse. If the transaction is rolled back, rspamd is trained anyway: training
+	// is best-effort.
+	if conf := mox.Conf.Static.Rspamd; learnRspamd && train && conf != nil {
+		mr := a.MessageReader(*m)
+		rspamd.QueueLearn(log.With(slog.Int64("msgid", m.ID)), *conf, trainJunk, func() (io.ReadCloser, error) {
+			return mr, nil
+		})
 	}
 	log.Debug("updating junk filter",
 		slog.Bool("untrain", untrain),
