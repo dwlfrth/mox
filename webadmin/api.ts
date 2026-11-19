@@ -2036,6 +2036,16 @@ export class Client {
 		return await _sherpaCall(this.baseURL, this.authState, { ...this.options }, paramTypes, returnTypes, fn, params) as boolean
 	}
 
+	// RspamdConfigured returns whether rspamd is configured in mox.conf. Unlike
+	// RspamdStatus, it does not contact rspamd.
+	async RspamdConfigured(): Promise<boolean> {
+		const fn: string = "RspamdConfigured"
+		const paramTypes: string[][] = []
+		const returnTypes: string[][] = [["bool"]]
+		const params: any[] = []
+		return await _sherpaCall(this.baseURL, this.authState, { ...this.options }, paramTypes, returnTypes, fn, params) as boolean
+	}
+
 	// RspamdStatus returns the status of the rspamd integration: counts in this mox
 	// process, and the status reported by rspamd. If rspamd cannot be reached, the
 	// error is returned in the status.

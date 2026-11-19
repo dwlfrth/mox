@@ -19,6 +19,9 @@ func TestRspamdStatus(t *testing.T) {
 
 	// Not configured: nothing else is set, and rspamd is not contacted.
 	mox.Conf.Static.Rspamd = nil
+	if api.RspamdConfigured(ctxbg) {
+		t.Fatalf("rspamd configured without rspamd in config")
+	}
 	s := api.RspamdStatus(ctxbg)
 	if s.Configured || s.URL != "" || s.Reachable {
 		t.Fatalf("got status %#v without rspamd configured", s)
@@ -36,6 +39,9 @@ func TestRspamdStatus(t *testing.T) {
 	defer srv.Close()
 
 	mox.Conf.Static.Rspamd = &config.Rspamd{URL: srv.URL, Password: "secret"}
+	if !api.RspamdConfigured(ctxbg) {
+		t.Fatalf("rspamd not configured with rspamd in config")
+	}
 	s = api.RspamdStatus(ctxbg)
 	if !s.Configured || s.URL != srv.URL || !s.Reachable || s.Error != "" {
 		t.Fatalf("got status %#v, expected configured and reachable", s)

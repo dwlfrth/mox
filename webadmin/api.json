@@ -1246,6 +1246,19 @@
 			]
 		},
 		{
+			"Name": "RspamdConfigured",
+			"Docs": "RspamdConfigured returns whether rspamd is configured in mox.conf. Unlike\nRspamdStatus, it does not contact rspamd.",
+			"Params": [],
+			"Returns": [
+				{
+					"Name": "r0",
+					"Typewords": [
+						"bool"
+					]
+				}
+			]
+		},
+		{
 			"Name": "RspamdStatus",
 			"Docs": "RspamdStatus returns the status of the rspamd integration: counts in this mox\nprocess, and the status reported by rspamd. If rspamd cannot be reached, the\nerror is returned in the status.",
 			"Params": [],

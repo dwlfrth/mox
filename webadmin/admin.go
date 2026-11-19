@@ -2371,6 +2371,12 @@ func rspamdCounts(m map[string]int64) []RspamdCount {
 	return l
 }
 
+// RspamdConfigured returns whether rspamd is configured in mox.conf. Unlike
+// RspamdStatus, it does not contact rspamd.
+func (Admin) RspamdConfigured(ctx context.Context) bool {
+	return mox.Conf.Static.Rspamd != nil
+}
+
 // RspamdStatus returns the status of the rspamd integration: counts in this mox
 // process, and the status reported by rspamd. If rspamd cannot be reached, the
 // error is returned in the status.

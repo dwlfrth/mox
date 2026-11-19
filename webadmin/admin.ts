@@ -334,16 +334,12 @@ const formatSize = (n: number) => {
 	return n + ' bytes'
 }
 
-// Status of the rspamd integration, for the index page. Only rendered if rspamd is
-// configured in mox.conf.
-const rspamdStatus = (s: api.RspamdStatus, refresh: () => void) => {
+// Table with the status of the rspamd integration.
+const rspamdStatusTable = (s: api.RspamdStatus) => {
 	const nowSecs = new Date().getTime()/1000
 	const counts = (l: api.RspamdCount[] | null | undefined) => (l || []).length === 0 ? '(none)' : (l || []).map(c => c.Name + ': ' + c.Count).join(', ')
 	const l = s.Local
-	return [
-		dom.br(),
-		dom.h2('Rspamd', attr.title('Incoming messages are checked by rspamd, and rspamd is trained with messages that users mark as (non)junk. Counts by mox are since mox started, counts by rspamd since its statistics were reset.')),
-		dom.table(
+	return dom.table(
 			dom.tr(dom.td('URL'), dom.td(s.URL)),
 			s.Reachable ? [
 				dom.tr(dom.td('Rspamd'), dom.td('Version ' + s.Version + ', started ', age(new Date((nowSecs - s.Uptime)*1000), false, nowSecs))),
@@ -364,18 +360,42 @@ const rspamdStatus = (s: api.RspamdStatus, refresh: () => void) => {
 			dom.tr(dom.td('Training queue'), dom.td('' + l.LearnQueued + ' of ' + l.LearnQueueSize)),
 			dom.tr(dom.td('Training by mox'), dom.td('ok: ' + l.LearnOK + ', failed: ' + l.LearnFailed + ', dropped: ' + l.LearnDropped, attr.title('Failed includes messages rspamd had already learned. Dropped means the queue was full.'))),
 			l.LastLearnError ? dom.tr(dom.td('Last training error'), dom.td(l.LastLearnError, ' (', age(l.LastLearnErrorTime, false, nowSecs), ')')) : [],
+	)
+}
+
+const rspamdPage = async () => {
+	const s = await client.RspamdStatus()
+
+	let tableElem: HTMLElement
+	let refreshButton: HTMLButtonElement
+
+	return dom.div(
+		crumbs(
+			{text: 'Mox Admin', path: '#'},
+			'Rspamd',
 		),
-		dom.div(style({marginTop: '.5ex'}), dom.clickbutton('Refresh', attr.title('Fetch the status again.'), function click() { refresh() })),
-	]
+		dom.p('Incoming messages are checked by rspamd, and rspamd is trained with messages that users mark as (non)junk. Counts by mox are since mox started, counts by rspamd since its statistics were reset.'),
+		s.Configured ? [
+			tableElem=dom.div(rspamdStatusTable(s)),
+			dom.div(
+				style({marginTop: '.5ex'}),
+				refreshButton=dom.clickbutton('Refresh', attr.title('Fetch the status again.'), async function click() {
+					const ns = await check(refreshButton, client.RspamdStatus())
+					dom._kids(tableElem, rspamdStatusTable(ns))
+				}),
+			),
+		] : box(yellow, 'Rspamd is not configured in mox.conf.'),
+	)
 }
 
 const index = async () => {
-	const [domains, queueSize, hooksQueueSize, checkUpdatesEnabled, [accounts, accountsDisabled]] = await Promise.all([
+	const [domains, queueSize, hooksQueueSize, checkUpdatesEnabled, [accounts, accountsDisabled], rspamdConfigured] = await Promise.all([
 		client.Domains(),
 		client.QueueSize(),
 		client.HookQueueSize(),
 		client.CheckUpdatesEnabled(),
 		client.Accounts(),
+		client.RspamdConfigured(),
 	])
 
 	let fieldset: HTMLFieldSetElement
@@ -388,17 +408,23 @@ const index = async () => {
 	let recvID: HTMLInputElement
 	let cidElem: HTMLSpanElement
 
-	// Loaded after the page, so a slow or unreachable rspamd doesn't delay it.
-	const rspamdElem = dom.div()
-	const loadRspamd = async () => {
-		try {
-			const s = await client.RspamdStatus()
-			dom._kids(rspamdElem, s.Configured ? rspamdStatus(s, loadRspamd) : [])
-		} catch (err) {
-			dom._kids(rspamdElem, dom.br(), dom.h2('Rspamd'), box(red, 'Error fetching status: ' + errmsg(err)))
-		}
+	// Note for the rspamd link, loaded after the page, so a slow or unreachable rspamd
+	// doesn't delay it.
+	const rspamdNote = dom.span()
+	if (rspamdConfigured) {
+		(async () => {
+			try {
+				const s = await client.RspamdStatus()
+				if (s.Reachable) {
+					dom._kids(rspamdNote, ' (queue ' + s.Local.LearnQueued + ')')
+				} else {
+					dom._kids(rspamdNote, ' ', dom.span(style({color: red}), '(not reachable)'))
+				}
+			} catch (err) {
+				dom._kids(rspamdNote, ' ', dom.span(style({color: red}), '(error: ' + errmsg(err) + ')'))
+			}
+		})()
 	}
-	loadRspamd()
 
 	return dom.div(
 		crumbs('Mox Admin'),
@@ -407,6 +433,7 @@ const index = async () => {
 			dom.a('Accounts', attr.href('#accounts')), dom.br(),
 			dom.a('Queue', attr.href('#queue')), ' ('+queueSize+')', dom.br(),
 			dom.a('Webhook queue', attr.href('#webhookqueue')), ' ('+hooksQueueSize+')', dom.br(),
+			rspamdConfigured ? [dom.a('Rspamd', attr.href('#rspamd')), rspamdNote, dom.br()] : [],
 		),
 		dom.h2('Domains'),
 		(domains || []).length === 0 ? box(red, 'No domains') :
@@ -482,7 +509,6 @@ const index = async () => {
 				),
 			),
 		),
-		rspamdElem,
 		// todo: routing, globally, per domain and per account
 		dom.br(),
 		dom.h2('Configuration'),
@@ -5462,6 +5488,8 @@ const init = async () => {
 				root = await queueList()
 			} else if (h === 'queue/retired') {
 				root = await retiredList()
+			} else if (h === 'rspamd') {
+				root = await rspamdPage()
 			} else if (h === 'webhookqueue') {
 				root = await hooksList()
 			} else if (h === 'webhookqueue/retired') {
