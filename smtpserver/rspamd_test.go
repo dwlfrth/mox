@@ -1,7 +1,10 @@
 package smtpserver
 
 import (
+	"bufio"
+	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -15,6 +18,7 @@ import (
 	"github.com/mjl-/mox/config"
 	"github.com/mjl-/mox/dns"
 	"github.com/mjl-/mox/mox-"
+	"github.com/mjl-/mox/rspamd"
 	"github.com/mjl-/mox/smtp"
 	"github.com/mjl-/mox/smtpclient"
 	"github.com/mjl-/mox/store"
@@ -218,5 +222,88 @@ func TestRspamdMultipleRecipients(t *testing.T) {
 	}
 	if got := h.Get("Password"); got != "" {
 		t.Errorf("got password header %q without password configured", got)
+	}
+}
+
+// The symbols in X-Mox-Reason are the 10 with the largest absolute score, ties
+// sorted by name.
+func TestRspamdSymbols(t *testing.T) {
+	symbols := map[string]rspamd.Symbol{}
+	for i, name := range []string{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J"} {
+		symbols[name] = rspamd.Symbol{Score: float64(i + 1)}
+	}
+	symbols["NEG"] = rspamd.Symbol{Score: -20}
+	symbols["TIE_B"] = rspamd.Symbol{Score: 5}
+	symbols["ZERO"] = rspamd.Symbol{Score: 0}
+	got := rspamdSymbols(symbols)
+	exp := "NEG -20.00, J 10.00, I 9.00, H 8.00, G 7.00, F 6.00, E 5.00, TIE_B 5.00, D 4.00, C 3.00"
+	if got != exp {
+		t.Fatalf("got %q, expected %q", got, exp)
+	}
+	if got := rspamdSymbols(nil); got != "(none)" {
+		t.Fatalf("got %q for no symbols, expected (none)", got)
+	}
+}
+
+// A client that greets with an IP address literal, e.g. "EHLO [127.0.0.10]", is
+// passed to rspamd as that address literal.
+func TestRspamdHeloAddressLiteral(t *testing.T) {
+	resolver := dns.MockResolver{
+		A: map[string][]string{
+			"example.org.": {"127.0.0.10"}, // For mx check.
+		},
+	}
+
+	fake := &fakeRspamd{status: http.StatusOK, body: `{"action":"no action","score":0,"required_score":15}`}
+	srv := httptest.NewServer(fake)
+	defer srv.Close()
+
+	ts := newTestServer(t, filepath.FromSlash("../testdata/smtp/mox.conf"), resolver)
+	defer ts.close()
+	mox.Conf.Static.Rspamd = &config.Rspamd{URL: srv.URL}
+	defer func() {
+		mox.Conf.Static.Rspamd = nil
+	}()
+
+	ts.runRaw(func(conn net.Conn) {
+		defer conn.Close()
+		br := bufio.NewReader(conn)
+		// Reads a possibly multiline reply, returning its last line.
+		reply := func() string {
+			for {
+				line, err := br.ReadString('\n')
+				tcheck(t, err, "read reply")
+				if len(line) < 4 || line[3] != '-' {
+					return strings.TrimRight(line, "\r\n")
+				}
+			}
+		}
+		cmd := func(s, expCode string) {
+			t.Helper()
+			_, err := fmt.Fprintf(conn, "%s\r\n", s)
+			tcheck(t, err, "write command")
+			if line := reply(); !strings.HasPrefix(line, expCode) {
+				t.Fatalf("%s: got reply %q, expected code %s", s, line, expCode)
+			}
+		}
+		if line := reply(); !strings.HasPrefix(line, "220") {
+			t.Fatalf("got greeting %q", line)
+		}
+		cmd("EHLO [127.0.0.10]", "250")
+		cmd("MAIL FROM:<remote@example.org>", "250")
+		cmd("RCPT TO:<mjl@mox.example>", "250")
+		cmd("DATA", "354")
+		msg := strings.ReplaceAll(strings.TrimRight(deliverMessage, "\r\n"), "\n.", "\n..")
+		cmd(msg+"\r\n.", "250")
+		cmd("QUIT", "221")
+	})
+
+	fake.Lock()
+	defer fake.Unlock()
+	if len(fake.headers) != 1 {
+		t.Fatalf("got %d requests to rspamd, expected 1", len(fake.headers))
+	}
+	if got := fake.headers[0].Get("Helo"); got != "[127.0.0.10]" {
+		t.Fatalf("got helo header %q, expected [127.0.0.10]", got)
 	}
 }
