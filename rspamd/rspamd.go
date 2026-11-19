@@ -36,6 +36,16 @@ const (
 	ActionNoAction       Action = "no action"
 )
 
+// Known returns whether the action is one of the actions known to rspamd by
+// default.
+func (a Action) Known() bool {
+	switch a {
+	case ActionReject, ActionSoftReject, ActionRewriteSubject, ActionAddHeader, ActionGreylist, ActionNoAction:
+		return true
+	}
+	return false
+}
+
 // Symbol is a rule that matched for a message, with its contribution to the
 // score.
 type Symbol struct {
@@ -92,7 +102,10 @@ func Check(ctx context.Context, conf config.Rspamd, req Request, msg io.Reader) 
 	}
 
 	var r Result
-	if err := post(ctx, conf, "/checkv2", hdr, msg, &r); err != nil {
+	start := time.Now()
+	err := post(ctx, conf, "/checkv2", hdr, msg, &r)
+	metricCheckDuration.Observe(float64(time.Since(start)) / float64(time.Second))
+	if err != nil {
 		return Result{}, err
 	}
 	return r, nil

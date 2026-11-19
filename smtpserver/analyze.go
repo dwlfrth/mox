@@ -539,9 +539,13 @@ func analyze(ctx context.Context, log mlog.Log, resolver dns.Resolver, d deliver
 			rerr = errors.New("rspamd skipped message")
 		}
 		if rerr != nil {
+			rspamd.CheckResult(rspamd.ResultFallback, rerr)
 			log.Errorx("rspamd check failed, continuing with junk filter", rerr)
 			addReasonText("rspamd: error, continuing with junk filter: %v", rerr)
 		} else {
+			if result.Action.Known() {
+				rspamd.CheckResult(string(result.Action), nil)
+			}
 			log.Info("rspamd analyzed",
 				slog.String("action", string(result.Action)),
 				slog.Float64("score", result.Score),
@@ -599,6 +603,7 @@ func analyze(ctx context.Context, log mlog.Log, resolver dns.Resolver, d deliver
 			case rspamd.ActionNoAction:
 				return accept(mailbox, reasonRspamdPass)
 			default:
+				rspamd.CheckResult(rspamd.ResultFallback, fmt.Errorf("unknown action %q", result.Action))
 				log.Error("unknown rspamd action, continuing with junk filter", slog.String("action", string(result.Action)))
 				addReasonText("rspamd: unknown action, continuing with junk filter")
 			}

@@ -71,6 +71,7 @@ func QueueLearn(log mlog.Log, conf config.Rspamd, spam bool, open func() (io.Rea
 	case learnQueue <- learnJob{log, conf, spam, open}:
 	default:
 		log.Error("rspamd learn queue full, not training rspamd with message", slog.Bool("spam", spam))
+		learnResult(spam, learnDropped, errors.New("queue full"))
 	}
 }
 
@@ -88,12 +89,14 @@ func learnOne(job learnJob) {
 			log.Error("unhandled panic while training rspamd", slog.Any("x", x))
 			debug.PrintStack()
 			metrics.PanicInc(metrics.Rspamd)
+			learnResult(job.spam, learnFailed, fmt.Errorf("panic: %v", x))
 		}
 	}()
 
 	msg, err := job.open()
 	if err != nil {
 		log.Errorx("opening message for training rspamd", err, slog.Bool("spam", job.spam))
+		learnResult(job.spam, learnFailed, fmt.Errorf("opening message: %v", err))
 		return
 	}
 	defer func() {
@@ -106,7 +109,9 @@ func learnOne(job learnJob) {
 	if err != nil {
 		// Commonly because rspamd already learned the message.
 		log.Infox("training rspamd", err, slog.Bool("spam", job.spam))
+		learnResult(job.spam, learnFailed, err)
 		return
 	}
 	log.Debug("trained rspamd", slog.Bool("spam", job.spam))
+	learnResult(job.spam, learnOK, nil)
 }

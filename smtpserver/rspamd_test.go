@@ -93,24 +93,26 @@ func TestRspamd(t *testing.T) {
 		expErr  *smtpclient.Error    // Nil for accepted delivery.
 		expMbox string               // Mailbox with the delivered message, for accepted delivery.
 		check   func(ts *testserver) // Additional checks.
+
+		expResult string // Recorded check result: the rspamd action applied, or fallback.
 	}{
-		{name: "no action", status: http.StatusOK, body: actionBody("no action"), expMbox: "Inbox"},
-		{name: "add header", status: http.StatusOK, body: actionBody("add header"), expMbox: "Junk"},
-		{name: "rewrite subject", status: http.StatusOK, body: actionBody("rewrite subject"), expMbox: "Junk"},
-		{name: "reject", status: http.StatusOK, body: actionBody("reject"), expErr: &smtpclient.Error{Permanent: true, Code: smtp.C550MailboxUnavail, Secode: smtp.SePol7DeliveryUnauth1}},
-		{name: "soft reject", status: http.StatusOK, body: actionBody("soft reject"), expErr: &smtpclient.Error{Permanent: false, Code: smtp.C451LocalErr, Secode: smtp.SePol7DeliveryUnauth1}},
-		{name: "greylist", status: http.StatusOK, body: actionBody("greylist"), expErr: &smtpclient.Error{Permanent: false, Code: smtp.C451LocalErr, Secode: smtp.SePol7DeliveryUnauth1}},
-		{name: "no junk mailbox", status: http.StatusOK, body: actionBody("add header"), noJunk: true, expErr: fallback},
+		{name: "no action", status: http.StatusOK, body: actionBody("no action"), expMbox: "Inbox", expResult: "no action"},
+		{name: "add header", status: http.StatusOK, body: actionBody("add header"), expMbox: "Junk", expResult: "add header"},
+		{name: "rewrite subject", status: http.StatusOK, body: actionBody("rewrite subject"), expMbox: "Junk", expResult: "rewrite subject"},
+		{name: "reject", status: http.StatusOK, body: actionBody("reject"), expErr: &smtpclient.Error{Permanent: true, Code: smtp.C550MailboxUnavail, Secode: smtp.SePol7DeliveryUnauth1}, expResult: "reject"},
+		{name: "soft reject", status: http.StatusOK, body: actionBody("soft reject"), expErr: &smtpclient.Error{Permanent: false, Code: smtp.C451LocalErr, Secode: smtp.SePol7DeliveryUnauth1}, expResult: "soft reject"},
+		{name: "greylist", status: http.StatusOK, body: actionBody("greylist"), expErr: &smtpclient.Error{Permanent: false, Code: smtp.C451LocalErr, Secode: smtp.SePol7DeliveryUnauth1}, expResult: "greylist"},
+		{name: "no junk mailbox", status: http.StatusOK, body: actionBody("add header"), noJunk: true, expErr: fallback, expResult: "add header"},
 		// Without a usable result, the junk filter decides as without rspamd.
-		{name: "http error", status: http.StatusInternalServerError, body: `{"error":"internal"}`, expErr: fallback},
-		{name: "bad json", status: http.StatusOK, body: `{`, expErr: fallback},
-		{name: "skipped", status: http.StatusOK, body: `{"is_skipped":true,"action":"no action"}`, expErr: fallback},
-		{name: "skipped without action", status: http.StatusOK, body: `{"is_skipped":true}`, expErr: fallback},
-		{name: "skipped reject", status: http.StatusOK, body: skippedBody("reject"), expErr: &smtpclient.Error{Permanent: true, Code: smtp.C550MailboxUnavail, Secode: smtp.SePol7DeliveryUnauth1}},
-		{name: "skipped soft reject", status: http.StatusOK, body: skippedBody("soft reject"), expErr: &smtpclient.Error{Permanent: false, Code: smtp.C451LocalErr, Secode: smtp.SePol7DeliveryUnauth1}},
-		{name: "skipped add header", status: http.StatusOK, body: skippedBody("add header"), expMbox: "Junk"},
-		{name: "unknown action", status: http.StatusOK, body: actionBody("discard"), expErr: fallback},
-		{name: "timeout", status: http.StatusOK, body: actionBody("no action"), delay: 2 * time.Second, expErr: fallback},
+		{name: "http error", status: http.StatusInternalServerError, body: `{"error":"internal"}`, expErr: fallback, expResult: "fallback"},
+		{name: "bad json", status: http.StatusOK, body: `{`, expErr: fallback, expResult: "fallback"},
+		{name: "skipped", status: http.StatusOK, body: `{"is_skipped":true,"action":"no action"}`, expErr: fallback, expResult: "fallback"},
+		{name: "skipped without action", status: http.StatusOK, body: `{"is_skipped":true}`, expErr: fallback, expResult: "fallback"},
+		{name: "skipped reject", status: http.StatusOK, body: skippedBody("reject"), expErr: &smtpclient.Error{Permanent: true, Code: smtp.C550MailboxUnavail, Secode: smtp.SePol7DeliveryUnauth1}, expResult: "reject"},
+		{name: "skipped soft reject", status: http.StatusOK, body: skippedBody("soft reject"), expErr: &smtpclient.Error{Permanent: false, Code: smtp.C451LocalErr, Secode: smtp.SePol7DeliveryUnauth1}, expResult: "soft reject"},
+		{name: "skipped add header", status: http.StatusOK, body: skippedBody("add header"), expMbox: "Junk", expResult: "add header"},
+		{name: "unknown action", status: http.StatusOK, body: actionBody("discard"), expErr: fallback, expResult: "fallback"},
+		{name: "timeout", status: http.StatusOK, body: actionBody("no action"), delay: 2 * time.Second, expErr: fallback, expResult: "fallback"},
 	}
 
 	for _, tc := range tests {
@@ -131,6 +133,8 @@ func TestRspamd(t *testing.T) {
 				tcheck(t, err, "clear junk special-use")
 			}
 
+			before := rspamd.Local().Checks
+
 			ts.run(func(client *smtpclient.Client) {
 				err := client.Deliver(ctxbg, "remote@example.org", "mjl@mox.example", int64(len(deliverMessage)), strings.NewReader(deliverMessage), false, false, false)
 				if tc.expErr == nil {
@@ -144,6 +148,21 @@ func TestRspamd(t *testing.T) {
 				if n := count(ts, tc.expMbox, tc.expMbox == "Junk"); n != 1 {
 					t.Fatalf("got %d messages in %s (junk flag set if Junk), expected 1", n, tc.expMbox)
 				}
+			}
+
+			// Exactly one check is recorded, with the expected result.
+			after := rspamd.Local().Checks
+			for result, n := range after {
+				exp := before[result]
+				if result == tc.expResult {
+					exp++
+				}
+				if n != exp {
+					t.Errorf("check result %q: got count %d, expected %d", result, n, exp)
+				}
+			}
+			if after[tc.expResult] != before[tc.expResult]+1 {
+				t.Errorf("check result %q not recorded", tc.expResult)
 			}
 
 			fake.Lock()
