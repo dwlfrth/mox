@@ -60,8 +60,8 @@ func TestRspamdStatus(t *testing.T) {
 	if len(s.Classes) != 2 || s.Classes[0] != expClasses[0] || s.Classes[1] != expClasses[1] {
 		t.Fatalf("got classes %v, expected %v", s.Classes, expClasses)
 	}
-	if s.Local.LearnQueueSize == 0 {
-		t.Fatalf("missing training queue size in local status %#v", s.Local)
+	if s.Local.LearnQueueSize == 0 || s.Local.Since.IsZero() {
+		t.Fatalf("missing training queue size or start time in local status %#v", s.Local)
 	}
 
 	// Unreachable: the error is in the status, without the URL.

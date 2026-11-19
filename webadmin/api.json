@@ -6779,6 +6779,13 @@
 			"Docs": "RspamdLocal holds counts about rspamd in this mox process, since it started.",
 			"Fields": [
 				{
+					"Name": "Since",
+					"Docs": "When this mox process started.",
+					"Typewords": [
+						"timestamp"
+					]
+				},
+				{
 					"Name": "Checks",
 					"Docs": "Messages checked, by result: rspamd action applied, or fallback when the junk filter decided instead.",
 					"Typewords": [

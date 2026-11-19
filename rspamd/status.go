@@ -52,9 +52,15 @@ var (
 	)
 )
 
+// started is when this process started, approximately: when this package was
+// initialized.
+var started = time.Now()
+
 // LocalStatus is the state of the rspamd integration in this mox process, since
 // it started.
 type LocalStatus struct {
+	Since time.Time // When this process started, the counts below are since then.
+
 	Checks             map[string]int64 // Messages checked, by result: rspamd action applied, or ResultFallback.
 	LastCheckError     string           // Error of the last check that fell back to the junk filter.
 	LastCheckErrorTime time.Time
@@ -79,6 +85,7 @@ func Local() LocalStatus {
 	local.Lock()
 	defer local.Unlock()
 	s := local.status
+	s.Since = started
 	s.Checks = maps.Clone(s.Checks)
 	s.LearnQueued = len(learnQueue)
 	s.LearnQueueSize = cap(learnQueue)

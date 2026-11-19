@@ -2334,6 +2334,7 @@ type RspamdStatus struct {
 
 // RspamdLocal holds counts about rspamd in this mox process, since it started.
 type RspamdLocal struct {
+	Since              time.Time     // When this mox process started.
 	Checks             []RspamdCount // Messages checked, by result: rspamd action applied, or fallback when the junk filter decided instead.
 	LastCheckError     string
 	LastCheckErrorTime time.Time
@@ -2390,6 +2391,7 @@ func (Admin) RspamdStatus(ctx context.Context) (r RspamdStatus) {
 
 	l := rspamd.Local()
 	r.Local = RspamdLocal{
+		Since:              l.Since,
 		Checks:             rspamdCounts(l.Checks),
 		LastCheckError:     l.LastCheckError,
 		LastCheckErrorTime: l.LastCheckErrorTime,

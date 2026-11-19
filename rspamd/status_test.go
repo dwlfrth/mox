@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 
@@ -134,6 +135,18 @@ func TestLearnQueueFull(t *testing.T) {
 	}
 	if v := metricValue(t, "mox_rspamd_learn_total", "class", "spam", "result", "dropped"); v != dropped0+1 {
 		t.Fatalf("metric for dropped spam: got %v, expected %v", v, dropped0+1)
+	}
+}
+
+// The counts are since the process started, which doesn't change.
+func TestLocalSince(t *testing.T) {
+	s0 := Local()
+	if s0.Since.IsZero() || s0.Since.After(time.Now()) {
+		t.Fatalf("got since %v, expected start of process in the past", s0.Since)
+	}
+	CheckResult("no action", nil)
+	if s1 := Local(); !s1.Since.Equal(s0.Since) {
+		t.Fatalf("since changed from %v to %v", s0.Since, s1.Since)
 	}
 }
 

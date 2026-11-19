@@ -355,10 +355,10 @@ const rspamdStatusTable = (s: api.RspamdStatus) => {
 					)
 				),
 			] : dom.tr(dom.td('Rspamd'), dom.td(box(red, 'Not reachable: ' + s.Error))),
-			dom.tr(dom.td('Checked by mox'), dom.td(counts(l.Checks), attr.title('By result: the rspamd action that was applied, or fallback when the junk filter decided instead.'))),
+			dom.tr(dom.td('Checked by mox'), dom.td(counts(l.Checks), ' (since mox started ', age(l.Since, false, nowSecs), ')', attr.title('By result: the rspamd action that was applied, or fallback when the junk filter decided instead.'))),
 			l.LastCheckError ? dom.tr(dom.td('Last check error'), dom.td(l.LastCheckError, ' (', age(l.LastCheckErrorTime, false, nowSecs), ')')) : [],
 			dom.tr(dom.td('Training queue'), dom.td('' + l.LearnQueued + ' of ' + l.LearnQueueSize)),
-			dom.tr(dom.td('Training by mox'), dom.td('ok: ' + l.LearnOK + ', failed: ' + l.LearnFailed + ', dropped: ' + l.LearnDropped, attr.title('Failed includes messages rspamd had already learned. Dropped means the queue was full.'))),
+			dom.tr(dom.td('Training by mox'), dom.td('ok: ' + l.LearnOK + ', failed: ' + l.LearnFailed + ', dropped: ' + l.LearnDropped, ' (since mox started ', age(l.Since, false, nowSecs), ')', attr.title('Failed includes messages rspamd had already learned. Dropped means the queue was full.'))),
 			l.LastLearnError ? dom.tr(dom.td('Last training error'), dom.td(l.LastLearnError, ' (', age(l.LastLearnErrorTime, false, nowSecs), ')')) : [],
 	)
 }
