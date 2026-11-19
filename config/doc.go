@@ -795,32 +795,33 @@ See https://pkg.go.dev/github.com/mjl-/sconf for details.
 	QuotaMessageSize: 0
 
 	# Use an rspamd server, through its HTTP API, for spam filtering of incoming
-	# messages, and train it with messages users mark as (non)junk. When set, rspamd
-	# judges incoming messages that mox's own checks have not decided on, in place of
-	# the account's junk filter and the DNSBLs. The checks mox does before its junk
-	# filter keep priority, such as delivery rate limits, a DMARC reject policy,
-	# mailing list allow rules, and a conclusive sender reputation based on earlier
-	# messages in the account. The rspamd action decides delivery: 'reject' rejects
-	# the message with a permanent error, 'soft reject' and 'greylist' reject with a
-	# temporary error, 'add header' and 'rewrite subject' deliver to the account's
-	# mailbox with the Junk special-use role and set the $Junk flag (rejected with a
-	# temporary error if there is no such mailbox), and 'no action' delivers to the
-	# normal mailbox. If rspamd cannot be reached, returns an error or an unknown
-	# action, or skipped the message without a verdict (a skip with action 'no
-	# action', e.g. due to rspamd's settings), the error is logged and the message is
-	# analyzed by the account's junk filter and DNSBLs as without rspamd. Training:
-	# when the junk flags of an existing message change such that the account's junk
-	# filter is trained with it, e.g. when a user moves a message into or out of the
-	# Junk mailbox, rspamd is trained with the message as spam or ham. This requires a
-	# junk filter configured for the account, and the junk flags to change, either
-	# through AutomaticJunkFlags of the account, or by the mail client setting $Junk
-	# or $NotJunk, though moving a message into the mailbox with the Junk special-use
-	# role always sets $Junk. Training happens in the background, and is best-effort:
-	# failures are logged, and queued training is lost when mox stops. Messages are
-	# not trained during delivery, rspamd's own autolearn can be enabled for that. The
-	# admin web interface shows the status of rspamd and counts of checks and
-	# training, which are also exported as prometheus metrics named mox_rspamd_*.
-	# (optional)
+	# messages, and train it with messages users mark as (non)junk. When set, the
+	# rspamd verdict decides about delivery of incoming messages, in place of mox's
+	# own checks: mailing list allow rules, DMARC reject policies, sender reputation
+	# based on earlier messages in the account (also for known correspondents),
+	# subjectpass, the junk filter and DNSBLs. The delivery rate limits still apply
+	# before rspamd is consulted. Messages to addresses for receiving DMARC and TLS
+	# reports are handled by mox without rspamd, and a destination's
+	# MessageAuthRequiredSMTPError still applies. The rspamd action decides delivery:
+	# 'reject' rejects the message with a permanent error, 'soft reject' and
+	# 'greylist' reject with a temporary error, 'add header' and 'rewrite subject'
+	# deliver to the account's mailbox with the Junk special-use role and set the
+	# $Junk flag (rejected with a temporary error if there is no such mailbox), and
+	# 'no action' delivers to the normal mailbox. If rspamd cannot be reached, returns
+	# an error or an unknown action, or skipped the message without a verdict (a skip
+	# with action 'no action', e.g. due to rspamd's settings), the error is logged and
+	# mox's own checks decide, as without rspamd. Training: when the junk flags of an
+	# existing message change such that the account's junk filter is trained with it,
+	# e.g. when a user moves a message into or out of the Junk mailbox, rspamd is
+	# trained with the message as spam or ham. This requires a junk filter configured
+	# for the account, and the junk flags to change, either through AutomaticJunkFlags
+	# of the account, or by the mail client setting $Junk or $NotJunk, though moving a
+	# message into the mailbox with the Junk special-use role always sets $Junk.
+	# Training happens in the background, and is best-effort: failures are logged, and
+	# queued training is lost when mox stops. Messages are not trained during
+	# delivery, rspamd's own autolearn can be enabled for that. The admin web
+	# interface shows the status of rspamd and counts of checks and training, which
+	# are also exported as prometheus metrics named mox_rspamd_*. (optional)
 	Rspamd:
 
 		# Base URL of the rspamd controller, e.g. http://localhost:11334. Messages are
