@@ -242,7 +242,7 @@
 		AuthResult2["AuthError"] = "error";
 		AuthResult2["AuthAborted"] = "aborted";
 	})(AuthResult || (AuthResult = {}));
-	var structTypes = { "Account": true, "Address": true, "AddressAlias": true, "Alias": true, "AliasAddress": true, "AuthResults": true, "AutoconfCheckResult": true, "AutodiscoverCheckResult": true, "AutodiscoverSRV": true, "AutomaticJunkFlags": true, "Canonicalization": true, "CheckResult": true, "ClientConfigs": true, "ClientConfigsEntry": true, "ConfigDomain": true, "DANECheckResult": true, "DKIM": true, "DKIMAuthResult": true, "DKIMCheckResult": true, "DKIMRecord": true, "DMARC": true, "DMARCCheckResult": true, "DMARCRecord": true, "DMARCSummary": true, "DNSSECResult": true, "DateRange": true, "Destination": true, "Directive": true, "Domain": true, "DomainFeedback": true, "Dynamic": true, "Evaluation": true, "EvaluationStat": true, "Extension": true, "FailureDetails": true, "Filter": true, "HoldRule": true, "Hook": true, "HookFilter": true, "HookResult": true, "HookRetired": true, "HookRetiredFilter": true, "HookRetiredSort": true, "HookSort": true, "IPDomain": true, "IPRevCheckResult": true, "Identifiers": true, "IncomingWebhook": true, "JunkFilter": true, "LoginAttempt": true, "MTASTS": true, "MTASTSCheckResult": true, "MTASTSRecord": true, "MX": true, "MXCheckResult": true, "Modifier": true, "Msg": true, "MsgResult": true, "MsgRetired": true, "OutgoingWebhook": true, "Pair": true, "Policy": true, "PolicyEvaluated": true, "PolicyOverrideReason": true, "PolicyPublished": true, "PolicyRecord": true, "Record": true, "Report": true, "ReportMetadata": true, "ReportRecord": true, "Result": true, "ResultPolicy": true, "RetiredFilter": true, "RetiredSort": true, "Reverse": true, "Route": true, "Row": true, "Ruleset": true, "SMTPAuth": true, "SPFAuthResult": true, "SPFCheckResult": true, "SPFRecord": true, "SRV": true, "SRVConfCheckResult": true, "STSMX": true, "Selector": true, "Sort": true, "SubjectPass": true, "Summary": true, "SuppressAddress": true, "TLSCheckResult": true, "TLSPublicKey": true, "TLSRPT": true, "TLSRPTCheckResult": true, "TLSRPTDateRange": true, "TLSRPTRecord": true, "TLSRPTSummary": true, "TLSRPTSuppressAddress": true, "TLSReportRecord": true, "TLSResult": true, "Transport": true, "TransportDirect": true, "TransportFail": true, "TransportSMTP": true, "TransportSocks": true, "URI": true, "WebForward": true, "WebHandler": true, "WebInternal": true, "WebRedirect": true, "WebStatic": true, "WebserverConfig": true };
+	var structTypes = { "Account": true, "Address": true, "AddressAlias": true, "Alias": true, "AliasAddress": true, "AuthResults": true, "AutoconfCheckResult": true, "AutodiscoverCheckResult": true, "AutodiscoverSRV": true, "AutomaticJunkFlags": true, "Canonicalization": true, "CheckResult": true, "ClientConfigs": true, "ClientConfigsEntry": true, "ConfigDomain": true, "DANECheckResult": true, "DKIM": true, "DKIMAuthResult": true, "DKIMCheckResult": true, "DKIMRecord": true, "DMARC": true, "DMARCCheckResult": true, "DMARCRecord": true, "DMARCSummary": true, "DNSSECResult": true, "DateRange": true, "Destination": true, "Directive": true, "Domain": true, "DomainFeedback": true, "Dynamic": true, "Evaluation": true, "EvaluationStat": true, "Extension": true, "FailureDetails": true, "Filter": true, "HoldRule": true, "Hook": true, "HookFilter": true, "HookResult": true, "HookRetired": true, "HookRetiredFilter": true, "HookRetiredSort": true, "HookSort": true, "IPDomain": true, "IPRevCheckResult": true, "Identifiers": true, "IncomingWebhook": true, "JunkFilter": true, "LoginAttempt": true, "MTASTS": true, "MTASTSCheckResult": true, "MTASTSRecord": true, "MX": true, "MXCheckResult": true, "Modifier": true, "Msg": true, "MsgResult": true, "MsgRetired": true, "OutgoingWebhook": true, "Pair": true, "Policy": true, "PolicyEvaluated": true, "PolicyOverrideReason": true, "PolicyPublished": true, "PolicyRecord": true, "Record": true, "Report": true, "ReportMetadata": true, "ReportRecord": true, "Result": true, "ResultPolicy": true, "RetiredFilter": true, "RetiredSort": true, "Reverse": true, "Route": true, "Row": true, "RspamdClass": true, "RspamdCount": true, "RspamdLocal": true, "RspamdStatus": true, "Ruleset": true, "SMTPAuth": true, "SPFAuthResult": true, "SPFCheckResult": true, "SPFRecord": true, "SRV": true, "SRVConfCheckResult": true, "STSMX": true, "Selector": true, "Sort": true, "SubjectPass": true, "Summary": true, "SuppressAddress": true, "TLSCheckResult": true, "TLSPublicKey": true, "TLSRPT": true, "TLSRPTCheckResult": true, "TLSRPTDateRange": true, "TLSRPTRecord": true, "TLSRPTSummary": true, "TLSRPTSuppressAddress": true, "TLSReportRecord": true, "TLSResult": true, "Transport": true, "TransportDirect": true, "TransportFail": true, "TransportSMTP": true, "TransportSocks": true, "URI": true, "WebForward": true, "WebHandler": true, "WebInternal": true, "WebRedirect": true, "WebStatic": true, "WebserverConfig": true };
 	var stringsTypes = { "Align": true, "AuthResult": true, "CSRFToken": true, "DMARCPolicy": true, "IP": true, "Localpart": true, "Mode": true, "RUA": true };
 	var intsTypes = {};
 	var types = {
@@ -338,6 +338,10 @@
 		"HookRetiredFilter": { "Name": "HookRetiredFilter", "Docs": "", "Fields": [{ "Name": "Max", "Docs": "", "Typewords": ["int32"] }, { "Name": "IDs", "Docs": "", "Typewords": ["[]", "int64"] }, { "Name": "Account", "Docs": "", "Typewords": ["string"] }, { "Name": "Submitted", "Docs": "", "Typewords": ["string"] }, { "Name": "LastActivity", "Docs": "", "Typewords": ["string"] }, { "Name": "Event", "Docs": "", "Typewords": ["string"] }] },
 		"HookRetiredSort": { "Name": "HookRetiredSort", "Docs": "", "Fields": [{ "Name": "Field", "Docs": "", "Typewords": ["string"] }, { "Name": "LastID", "Docs": "", "Typewords": ["int64"] }, { "Name": "Last", "Docs": "", "Typewords": ["any"] }, { "Name": "Asc", "Docs": "", "Typewords": ["bool"] }] },
 		"HookRetired": { "Name": "HookRetired", "Docs": "", "Fields": [{ "Name": "ID", "Docs": "", "Typewords": ["int64"] }, { "Name": "QueueMsgID", "Docs": "", "Typewords": ["int64"] }, { "Name": "FromID", "Docs": "", "Typewords": ["string"] }, { "Name": "MessageID", "Docs": "", "Typewords": ["string"] }, { "Name": "Subject", "Docs": "", "Typewords": ["string"] }, { "Name": "Extra", "Docs": "", "Typewords": ["{}", "string"] }, { "Name": "Account", "Docs": "", "Typewords": ["string"] }, { "Name": "URL", "Docs": "", "Typewords": ["string"] }, { "Name": "Authorization", "Docs": "", "Typewords": ["bool"] }, { "Name": "IsIncoming", "Docs": "", "Typewords": ["bool"] }, { "Name": "OutgoingEvent", "Docs": "", "Typewords": ["string"] }, { "Name": "Payload", "Docs": "", "Typewords": ["string"] }, { "Name": "Submitted", "Docs": "", "Typewords": ["timestamp"] }, { "Name": "SupersededByID", "Docs": "", "Typewords": ["int64"] }, { "Name": "Attempts", "Docs": "", "Typewords": ["int32"] }, { "Name": "Results", "Docs": "", "Typewords": ["[]", "HookResult"] }, { "Name": "Success", "Docs": "", "Typewords": ["bool"] }, { "Name": "LastActivity", "Docs": "", "Typewords": ["timestamp"] }, { "Name": "KeepUntil", "Docs": "", "Typewords": ["timestamp"] }] },
+		"RspamdStatus": { "Name": "RspamdStatus", "Docs": "", "Fields": [{ "Name": "Configured", "Docs": "", "Typewords": ["bool"] }, { "Name": "URL", "Docs": "", "Typewords": ["string"] }, { "Name": "Local", "Docs": "", "Typewords": ["RspamdLocal"] }, { "Name": "Reachable", "Docs": "", "Typewords": ["bool"] }, { "Name": "Error", "Docs": "", "Typewords": ["string"] }, { "Name": "Version", "Docs": "", "Typewords": ["string"] }, { "Name": "Uptime", "Docs": "", "Typewords": ["int64"] }, { "Name": "Scanned", "Docs": "", "Typewords": ["int64"] }, { "Name": "Learned", "Docs": "", "Typewords": ["int64"] }, { "Name": "Actions", "Docs": "", "Typewords": ["[]", "RspamdCount"] }, { "Name": "Classes", "Docs": "", "Typewords": ["[]", "RspamdClass"] }] },
+		"RspamdLocal": { "Name": "RspamdLocal", "Docs": "", "Fields": [{ "Name": "Checks", "Docs": "", "Typewords": ["[]", "RspamdCount"] }, { "Name": "LastCheckError", "Docs": "", "Typewords": ["string"] }, { "Name": "LastCheckErrorTime", "Docs": "", "Typewords": ["timestamp"] }, { "Name": "LearnQueued", "Docs": "", "Typewords": ["int32"] }, { "Name": "LearnQueueSize", "Docs": "", "Typewords": ["int32"] }, { "Name": "LearnOK", "Docs": "", "Typewords": ["int64"] }, { "Name": "LearnFailed", "Docs": "", "Typewords": ["int64"] }, { "Name": "LearnDropped", "Docs": "", "Typewords": ["int64"] }, { "Name": "LastLearnError", "Docs": "", "Typewords": ["string"] }, { "Name": "LastLearnErrorTime", "Docs": "", "Typewords": ["timestamp"] }] },
+		"RspamdCount": { "Name": "RspamdCount", "Docs": "", "Fields": [{ "Name": "Name", "Docs": "", "Typewords": ["string"] }, { "Name": "Count", "Docs": "", "Typewords": ["int64"] }] },
+		"RspamdClass": { "Name": "RspamdClass", "Docs": "", "Fields": [{ "Name": "Classifier", "Docs": "", "Typewords": ["string"] }, { "Name": "Symbol", "Docs": "", "Typewords": ["string"] }, { "Name": "Class", "Docs": "", "Typewords": ["string"] }, { "Name": "Learned", "Docs": "", "Typewords": ["int64"] }, { "Name": "MinLearns", "Docs": "", "Typewords": ["int64"] }] },
 		"WebserverConfig": { "Name": "WebserverConfig", "Docs": "", "Fields": [{ "Name": "WebDNSDomainRedirects", "Docs": "", "Typewords": ["[]", "[]", "Domain"] }, { "Name": "WebDomainRedirects", "Docs": "", "Typewords": ["[]", "[]", "string"] }, { "Name": "WebHandlers", "Docs": "", "Typewords": ["[]", "WebHandler"] }] },
 		"WebHandler": { "Name": "WebHandler", "Docs": "", "Fields": [{ "Name": "LogName", "Docs": "", "Typewords": ["string"] }, { "Name": "Domain", "Docs": "", "Typewords": ["string"] }, { "Name": "PathRegexp", "Docs": "", "Typewords": ["string"] }, { "Name": "DontRedirectPlainHTTP", "Docs": "", "Typewords": ["bool"] }, { "Name": "Compress", "Docs": "", "Typewords": ["bool"] }, { "Name": "WebStatic", "Docs": "", "Typewords": ["nullable", "WebStatic"] }, { "Name": "WebRedirect", "Docs": "", "Typewords": ["nullable", "WebRedirect"] }, { "Name": "WebForward", "Docs": "", "Typewords": ["nullable", "WebForward"] }, { "Name": "WebInternal", "Docs": "", "Typewords": ["nullable", "WebInternal"] }, { "Name": "Name", "Docs": "", "Typewords": ["string"] }, { "Name": "DNSDomain", "Docs": "", "Typewords": ["Domain"] }] },
 		"WebStatic": { "Name": "WebStatic", "Docs": "", "Fields": [{ "Name": "StripPrefix", "Docs": "", "Typewords": ["string"] }, { "Name": "Root", "Docs": "", "Typewords": ["string"] }, { "Name": "ListFiles", "Docs": "", "Typewords": ["bool"] }, { "Name": "ContinueNotFound", "Docs": "", "Typewords": ["bool"] }, { "Name": "ResponseHeaders", "Docs": "", "Typewords": ["{}", "string"] }] },
@@ -875,6 +879,16 @@
 			const fn = "CheckUpdatesEnabled";
 			const paramTypes = [];
 			const returnTypes = [["bool"]];
+			const params = [];
+			return await _sherpaCall(this.baseURL, this.authState, { ...this.options }, paramTypes, returnTypes, fn, params);
+		}
+		// RspamdStatus returns the status of the rspamd integration: counts in this mox
+		// process, and the status reported by rspamd. If rspamd cannot be reached, the
+		// error is returned in the status.
+		async RspamdStatus() {
+			const fn = "RspamdStatus";
+			const paramTypes = [];
+			const returnTypes = [["RspamdStatus"]];
 			const params = [];
 			return await _sherpaCall(this.baseURL, this.authState, { ...this.options }, paramTypes, returnTypes, fn, params);
 		}
@@ -1792,6 +1806,24 @@
 		}
 		return n + " bytes";
 	}, "formatSize");
+	var rspamdStatus = /* @__PURE__ */ __name((s, refresh) => {
+		const nowSecs = (/* @__PURE__ */ new Date()).getTime() / 1e3;
+		const counts = /* @__PURE__ */ __name((l2) => (l2 || []).length === 0 ? "(none)" : (l2 || []).map((c) => c.Name + ": " + c.Count).join(", "), "counts");
+		const l = s.Local;
+		return [
+			dom.br(),
+			dom.h2("Rspamd", attr.title("Incoming messages are checked by rspamd, and rspamd is trained with messages that users mark as (non)junk. Counts by mox are since mox started, counts by rspamd since its statistics were reset.")),
+			dom.table(dom.tr(dom.td("URL"), dom.td(s.URL)), s.Reachable ? [
+				dom.tr(dom.td("Rspamd"), dom.td("Version " + s.Version + ", started ", age(new Date((nowSecs - s.Uptime) * 1e3), false, nowSecs))),
+				dom.tr(dom.td("Checked by rspamd"), dom.td("" + s.Scanned + " (" + counts(s.Actions) + ")")),
+				dom.tr(dom.td("Learned by rspamd"), dom.td("" + s.Learned)),
+				(s.Classes || []).map((c) => dom.tr(dom.td("Learned " + c.Class + (c.Classifier ? " (" + c.Classifier + ")" : "")), dom.td("" + c.Learned, c.MinLearns > 0 ? [" of " + c.MinLearns + " needed ", c.Learned >= c.MinLearns ? "" : dom.span(attr.title("The classifier is only used when each of its classes has at least this many learned messages."), "(not yet)")] : [])))
+			] : dom.tr(dom.td("Rspamd"), dom.td(box(red, "Not reachable: " + s.Error))), dom.tr(dom.td("Checked by mox"), dom.td(counts(l.Checks), attr.title("By result: the rspamd action that was applied, or fallback when the junk filter decided instead."))), l.LastCheckError ? dom.tr(dom.td("Last check error"), dom.td(l.LastCheckError, " (", age(l.LastCheckErrorTime, false, nowSecs), ")")) : [], dom.tr(dom.td("Training queue"), dom.td("" + l.LearnQueued + " of " + l.LearnQueueSize)), dom.tr(dom.td("Training by mox"), dom.td("ok: " + l.LearnOK + ", failed: " + l.LearnFailed + ", dropped: " + l.LearnDropped, attr.title("Failed includes messages rspamd had already learned. Dropped means the queue was full."))), l.LastLearnError ? dom.tr(dom.td("Last training error"), dom.td(l.LastLearnError, " (", age(l.LastLearnErrorTime, false, nowSecs), ")")) : []),
+			dom.div(style({ marginTop: ".5ex" }), dom.clickbutton("Refresh", attr.title("Fetch the status again."), /* @__PURE__ */ __name(function click() {
+				refresh();
+			}, "click")))
+		];
+	}, "rspamdStatus");
 	var index = /* @__PURE__ */ __name(async () => {
 		const [domains, queueSize, hooksQueueSize, checkUpdatesEnabled, [accounts2, accountsDisabled]] = await Promise.all([
 			client.Domains(),
@@ -1808,6 +1840,16 @@
 		let recvIDFieldset;
 		let recvID;
 		let cidElem;
+		const rspamdElem = dom.div();
+		const loadRspamd = /* @__PURE__ */ __name(async () => {
+			try {
+				const s = await client.RspamdStatus();
+				dom._kids(rspamdElem, s.Configured ? rspamdStatus(s, loadRspamd) : []);
+			} catch (err) {
+				dom._kids(rspamdElem, dom.br(), dom.h2("Rspamd"), box(red, "Error fetching status: " + errmsg(err)));
+			}
+		}, "loadRspamd");
+		loadRspamd();
 		return dom.div(
 			crumbs("Mox Admin"),
 			checkUpdatesEnabled ? [] : dom.p(box(yellow, "Warning: Checking for updates has not been enabled in mox.conf (CheckUpdates: true).", dom.br(), "Make sure you stay up to date through another mechanism!", dom.br(), "You have a responsibility to keep the internet-connected software you run up to date and secure!", dom.br(), "See ", link("https://updates.xmox.nl/changelog"))),
@@ -1839,6 +1881,7 @@
 				const cid = await check(recvIDFieldset, client.LookupCid(recvID.value));
 				dom._kids(cidElem, cid);
 			}, "submit"), recvIDFieldset = dom.fieldset(dom.label("Received ID", attr.title("The ID in the Received header that was added during incoming delivery.")), " ", recvID = dom.input(attr.required("")), " ", dom.submitbutton("Lookup cid", attr.title('Logging about an incoming message includes an attribute "cid", a counter identifying the transaction related to delivery of the message. The ID in the received header is an encrypted cid, which this form decrypts, after which you can look it up in the logging.')), " ", cidElem = dom.span()))),
+			rspamdElem,
 			// todo: routing, globally, per domain and per account
 			dom.br(),
 			dom.h2("Configuration"),

@@ -817,7 +817,9 @@ See https://pkg.go.dev/github.com/mjl-/sconf for details.
 	# or $NotJunk, though moving a message into the mailbox with the Junk special-use
 	# role always sets $Junk. Training happens in the background, and is best-effort:
 	# failures are logged, and queued training is lost when mox stops. Messages are
-	# not trained during delivery, rspamd's own autolearn can be enabled for that.
+	# not trained during delivery, rspamd's own autolearn can be enabled for that. The
+	# admin web interface shows the status of rspamd and counts of checks and
+	# training, which are also exported as prometheus metrics named mox_rspamd_*.
 	# (optional)
 	Rspamd:
 
