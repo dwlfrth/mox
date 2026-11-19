@@ -2,10 +2,13 @@ package smtpserver
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"net"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -22,6 +25,7 @@ import (
 	"github.com/mjl-/mox/mlog"
 	"github.com/mjl-/mox/mox-"
 	"github.com/mjl-/mox/publicsuffix"
+	"github.com/mjl-/mox/rspamd"
 	"github.com/mjl-/mox/smtp"
 	"github.com/mjl-/mox/store"
 	"github.com/mjl-/mox/subjectpass"
@@ -46,6 +50,7 @@ type delivery struct {
 	dkimResults      []dkim.Result
 	iprevStatus      iprev.Status
 	smtputf8         bool
+	rspamdCheck      func() (rspamd.Result, error) // Nil if rspamd is not configured.
 }
 
 type analysis struct {
@@ -86,6 +91,12 @@ const (
 	reasonIPrev             = "iprev"     // No or mild junk reputation signals, and bad iprev.
 	reasonHighRate          = "high-rate" // Too many messages, not added to rejects.
 	reasonMsgAuthRequired   = "msg-auth-required"
+
+	// With rspamd configured, its action. Soft reject is also used for greylist.
+	reasonRspamdReject     = "rspamd-reject"
+	reasonRspamdSoftReject = "rspamd-softreject"
+	reasonRspamdJunk       = "rspamd-junk"
+	reasonRspamdPass       = "rspamd-pass"
 )
 
 func isListDomain(d delivery, ld dns.Domain) bool {
@@ -516,6 +527,84 @@ func analyze(ctx context.Context, log mlog.Log, resolver dns.Resolver, d deliver
 		}
 	}
 
+	// With rspamd configured, it decides about messages that the checks above did not
+	// decide on, instead of the junk filter and DNSBLs below. If rspamd does not give
+	// a usable result, we continue below as without rspamd.
+	if d.rspamdCheck != nil {
+		result, rerr := d.rspamdCheck()
+		// rspamd also sets is_skipped when a prefilter decided early, e.g. GTUBE,
+		// with a verdict in the action that we must apply. Only a skip without a
+		// verdict means rspamd did not judge the message.
+		if rerr == nil && result.IsSkipped && (result.Action == "" || result.Action == rspamd.ActionNoAction) {
+			rerr = errors.New("rspamd skipped message")
+		}
+		if rerr != nil {
+			log.Errorx("rspamd check failed, continuing with junk filter", rerr)
+			addReasonText("rspamd: error, continuing with junk filter: %v", rerr)
+		} else {
+			log.Info("rspamd analyzed",
+				slog.String("action", string(result.Action)),
+				slog.Float64("score", result.Score),
+				slog.Float64("requiredscore", result.RequiredScore))
+			addReasonText("rspamd: action %s, score %.2f, required %.2f, symbols: %s", result.Action, result.Score, result.RequiredScore, rspamdSymbols(result.Symbols))
+
+			accept := func(mailbox, reason string) analysis {
+				return analysis{
+					d:                   d,
+					accept:              true,
+					mailbox:             mailbox,
+					mailboxDestined:     mailboxDestined,
+					reason:              reason,
+					reasonText:          reasonText,
+					dmarcOverrideReason: dmarcOverrideReason,
+					headers:             headers,
+				}
+			}
+
+			switch result.Action {
+			case rspamd.ActionReject:
+				return reject(smtp.C550MailboxUnavail, smtp.SePol7DeliveryUnauth1, "rejected as spam", nil, reasonRspamdReject)
+			case rspamd.ActionSoftReject, rspamd.ActionGreylist:
+				return reject(smtp.C451LocalErr, smtp.SePol7DeliveryUnauth1, "try again later", nil, reasonRspamdSoftReject)
+			case rspamd.ActionAddHeader, rspamd.ActionRewriteSubject:
+				var junkMailbox string
+				var mbErr error
+				d.acc.WithRLock(func() {
+					mbErr = d.acc.DB.Read(ctx, func(tx *bstore.Tx) error {
+						mb, qerr := bstore.QueryTx[store.Mailbox](tx).FilterEqual("Expunged", false).FilterEqual("Junk", true).Get()
+						if qerr == bstore.ErrAbsent {
+							return nil
+						} else if qerr != nil {
+							return qerr
+						}
+						junkMailbox = mb.Name
+						return nil
+					})
+				})
+				if mbErr != nil {
+					log.Errorx("finding junk mailbox", mbErr)
+					addReasonText("finding junk mailbox: %v", mbErr)
+					return reject(smtp.C451LocalErr, smtp.SeSys3Other0, "error processing", mbErr, reasonRspamdJunk)
+				} else if junkMailbox == "" {
+					log.Info("no mailbox with junk special-use role to deliver rspamd junk to, rejecting")
+					addReasonText("no junk mailbox to deliver to")
+					return reject(smtp.C451LocalErr, smtp.SeSys3Other0, "error processing", nil, reasonRspamdJunk)
+				}
+				if mailboxDestined == "" {
+					mailboxDestined = mailbox
+				}
+				d.m.Junk = true
+				d.m.Notjunk = false
+				return accept(junkMailbox, reasonRspamdJunk)
+			case rspamd.ActionNoAction:
+				return accept(mailbox, reasonRspamdPass)
+			default:
+				log.Error("unknown rspamd action, continuing with junk filter", slog.String("action", string(result.Action)))
+				addReasonText("rspamd: unknown action, continuing with junk filter")
+			}
+		}
+	}
+
 	reason = reasonNoBadSignals
 	accept := true
 	var junkSubjectpass bool
@@ -696,6 +785,38 @@ func analyze(ctx context.Context, log mlog.Log, resolver dns.Resolver, d deliver
 	}
 
 	return reject(smtp.C451LocalErr, smtp.SeSys3Other0, "error processing", nil, reason)
+}
+
+// rspamdSymbols returns the symbols with the largest absolute scores, for the
+// X-Mox-Reason header.
+func rspamdSymbols(symbols map[string]rspamd.Symbol) string {
+	l := make([]rspamd.Symbol, 0, len(symbols))
+	for name, sym := range symbols {
+		sym.Name = name
+		l = append(l, sym)
+	}
+	sort.Slice(l, func(i, j int) bool {
+		ai, aj := math.Abs(l[i].Score), math.Abs(l[j].Score)
+		if ai != aj {
+			return ai > aj
+		}
+		return l[i].Name < l[j].Name
+	})
+	const maxSymbols = 10
+	if len(l) > maxSymbols {
+		l = l[:maxSymbols]
+	}
+	var b strings.Builder
+	for i, sym := range l {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		fmt.Fprintf(&b, "%s %.2f", sym.Name, sym.Score)
+	}
+	if b.Len() == 0 {
+		return "(none)"
+	}
+	return b.String()
 }
 
 func isASCII(s string) bool {

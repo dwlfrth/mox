@@ -55,6 +55,7 @@ import (
 	"github.com/mjl-/mox/publicsuffix"
 	"github.com/mjl-/mox/queue"
 	"github.com/mjl-/mox/ratelimit"
+	"github.com/mjl-/mox/rspamd"
 	"github.com/mjl-/mox/scram"
 	"github.com/mjl-/mox/smtp"
 	"github.com/mjl-/mox/spf"
@@ -2228,6 +2229,7 @@ func (c *conn) cmdData(p *parser) {
 	var recvFrom string
 	var iprevStatus iprev.Status // Only for delivery, not submission.
 	var iprevAuthentic bool
+	var iprevName string // Verified reverse name, for rspamd.
 	if c.submission {
 		// Hide internal hosts.
 		// todo future: make this a config option, where admins specify ip ranges that they don't want exposed. also see ../rfc/5321:4321
@@ -2249,6 +2251,9 @@ func (c *conn) cmdData(p *parser) {
 			c.log.Infox("reverse-forward lookup", err, slog.Any("remoteip", c.remoteIP))
 		}
 		c.log.Debug("dns iprev check", slog.Any("addr", c.remoteIP), slog.Any("status", iprevStatus))
+		if iprevStatus == iprev.StatusPass {
+			iprevName = strings.TrimSuffix(revName, ".")
+		}
 		var name string
 		if revName != "" {
 			name = revName
@@ -2328,7 +2333,7 @@ func (c *conn) cmdData(p *parser) {
 	if c.submission {
 		c.submit(cmdctx, recvHdrFor, msgWriter, dataFile, part)
 	} else {
-		c.deliver(cmdctx, recvHdrFor, msgWriter, iprevStatus, iprevAuthentic, dataFile)
+		c.deliver(cmdctx, recvHdrFor, msgWriter, iprevStatus, iprevAuthentic, iprevName, dataFile)
 	}
 }
 
@@ -2626,7 +2631,7 @@ func (c *conn) xlocalserveError(lp smtp.Localpart) {
 
 // deliver is called for incoming messages from external, typically untrusted
 // sources. i.e. not submitted by authenticated users.
-func (c *conn) deliver(ctx context.Context, recvHdrFor func(string) string, msgWriter *message.Writer, iprevStatus iprev.Status, iprevAuthentic bool, dataFile *os.File) {
+func (c *conn) deliver(ctx context.Context, recvHdrFor func(string) string, msgWriter *message.Writer, iprevStatus iprev.Status, iprevAuthentic bool, iprevName string, dataFile *os.File) {
 	// todo: in decision making process, if we run into (some) temporary errors, attempt to continue. if we decide to accept, all good. if we decide to reject, we'll make it a temporary reject.
 
 	var msgFrom smtp.Address
@@ -3061,6 +3066,36 @@ func (c *conn) deliver(ctx context.Context, recvHdrFor func(string) string, msgW
 		return false
 	}
 
+	// With rspamd configured, the message is checked once, on first use, with all
+	// recipients, and the result used in the analysis for each recipient.
+	var rspamdCheck func() (rspamd.Result, error)
+	if rconf := mox.Conf.Static.Rspamd; rconf != nil {
+		var once sync.Once
+		var result rspamd.Result
+		var checkErr error
+		rspamdCheck = func() (rspamd.Result, error) {
+			once.Do(func() {
+				req := rspamd.Request{
+					IP:       c.remoteIP,
+					Helo:     c.hello.Domain.Name(),
+					Hostname: iprevName,
+					QueueID:  mox.ReceivedID(c.cid),
+				}
+				if len(c.hello.IP) > 0 {
+					req.Helo = smtp.AddressLiteral(c.hello.IP)
+				}
+				if !c.mailFrom.IsZero() {
+					req.MailFrom = c.mailFrom.String()
+				}
+				for _, rcpt := range c.recipients {
+					req.Rcpts = append(req.Rcpts, rcpt.Addr.String())
+				}
+				result, checkErr = rspamd.Check(ctx, *rconf, req, io.NewSectionReader(dataFile, 0, msgWriter.Size))
+			})
+			return result, checkErr
+		}
+	}
+
 	// Prepare a message, analyze it against account's junk filter.
 	// The returned analysis has an open account that must be closed by the caller.
 	// We call this for all alias destinations, also when we already delivered to that
@@ -3120,7 +3155,7 @@ func (c *conn) deliver(ctx context.Context, recvHdrFor func(string) string, msgW
 			msgTo = envelope.To
 			msgCc = envelope.CC
 		}
-		d := delivery{c.tls, &m, dataFile, smtpRcptTo, deliverTo, destination, canonicalAddr, acc, msgTo, msgCc, msgFrom, c.dnsBLs, dmarcUse, dmarcResult, dkimResults, iprevStatus, c.smtputf8}
+		d := delivery{c.tls, &m, dataFile, smtpRcptTo, deliverTo, destination, canonicalAddr, acc, msgTo, msgCc, msgFrom, c.dnsBLs, dmarcUse, dmarcResult, dkimResults, iprevStatus, c.smtputf8, rspamdCheck}
 
 		r := analyze(ctx, log, c.resolver, d)
 		return &r, nil

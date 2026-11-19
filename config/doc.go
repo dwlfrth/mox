@@ -794,6 +794,36 @@ See https://pkg.go.dev/github.com/mjl-/sconf for details.
 	# (optional)
 	QuotaMessageSize: 0
 
+	# Use an rspamd server, through its HTTP API, for spam filtering of incoming
+	# messages. When set, rspamd judges incoming messages that mox's own checks have
+	# not decided on, in place of the account's junk filter and the DNSBLs. The checks
+	# mox does before its junk filter keep priority, such as delivery rate limits, a
+	# DMARC reject policy, mailing list allow rules, and a conclusive sender
+	# reputation based on earlier messages in the account. The rspamd action decides
+	# delivery: 'reject' rejects the message with a permanent error, 'soft reject' and
+	# 'greylist' reject with a temporary error, 'add header' and 'rewrite subject'
+	# deliver to the account's mailbox with the Junk special-use role and set the
+	# $Junk flag (rejected with a temporary error if there is no such mailbox), and
+	# 'no action' delivers to the normal mailbox. If rspamd cannot be reached, returns
+	# an error or an unknown action, or skipped the message without a verdict (a skip
+	# with action 'no action', e.g. due to rspamd's settings), the error is logged and
+	# the message is analyzed by the account's junk filter and DNSBLs as without
+	# rspamd. (optional)
+	Rspamd:
+
+		# Base URL of the rspamd controller, e.g. http://localhost:11334. Messages are
+		# checked with the checkv2 endpoint. Must not contain credentials or a query
+		# string.
+		URL:
+
+		# Password for the rspamd controller, sent in the Password header of each request.
+		# Not needed if the controller allows requests from mox's IP without password,
+		# e.g. through secure_ip. (optional)
+		Password:
+
+		# Timeout for each request to rspamd, e.g. 15s. Default 15s. (optional)
+		Timeout: 0s
+
 # domains.conf
 
 	# NOTE: This config file is in 'sconf' format. Indent with tabs. Comments must be

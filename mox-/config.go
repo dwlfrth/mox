@@ -1134,6 +1134,26 @@ func PrepareStaticConfig(ctx context.Context, log mlog.Log, configFile string, c
 		}
 	}
 
+	if r := c.Rspamd; r != nil {
+		// Credentials or a query string in the URL could end up in logs, so we require the
+		// Password field instead.
+		if u, err := url.Parse(r.URL); err != nil {
+			// Not the url.Error itself, it includes the URL.
+			var uerr *url.Error
+			if errors.As(err, &uerr) {
+				err = uerr.Err
+			}
+			addErrorf("rspamd: parsing url: %v", err)
+		} else if u.Scheme != "http" && u.Scheme != "https" || u.Host == "" {
+			addErrorf("rspamd: url must be http or https with a host")
+		} else if u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+			addErrorf("rspamd: url must not have credentials, query string or fragment, use field Password for a password")
+		}
+		if r.Timeout < 0 {
+			addErrorf("rspamd: timeout must not be negative")
+		}
+	}
+
 	// Load CA certificate pool.
 	if c.TLS.CA != nil {
 		if c.TLS.CA.AdditionalToSystem {
