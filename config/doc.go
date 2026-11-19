@@ -794,6 +794,48 @@ See https://pkg.go.dev/github.com/mjl-/sconf for details.
 	# (optional)
 	QuotaMessageSize: 0
 
+	# Use an rspamd server, through its HTTP API, for spam filtering of incoming
+	# messages, and train it with messages users mark as (non)junk. When set, rspamd
+	# judges incoming messages that mox's own checks have not decided on, in place of
+	# the account's junk filter and the DNSBLs. The checks mox does before its junk
+	# filter keep priority, such as delivery rate limits, a DMARC reject policy,
+	# mailing list allow rules, and a conclusive sender reputation based on earlier
+	# messages in the account. The rspamd action decides delivery: 'reject' rejects
+	# the message with a permanent error, 'soft reject' and 'greylist' reject with a
+	# temporary error, 'add header' and 'rewrite subject' deliver to the account's
+	# mailbox with the Junk special-use role and set the $Junk flag (rejected with a
+	# temporary error if there is no such mailbox), and 'no action' delivers to the
+	# normal mailbox. If rspamd cannot be reached, returns an error or an unknown
+	# action, or skipped the message without a verdict (a skip with action 'no
+	# action', e.g. due to rspamd's settings), the error is logged and the message is
+	# analyzed by the account's junk filter and DNSBLs as without rspamd. Training:
+	# when the junk flags of an existing message change such that the account's junk
+	# filter is trained with it, e.g. when a user moves a message into or out of the
+	# Junk mailbox, rspamd is trained with the message as spam or ham. This requires a
+	# junk filter configured for the account, and the junk flags to change, either
+	# through AutomaticJunkFlags of the account, or by the mail client setting $Junk
+	# or $NotJunk, though moving a message into the mailbox with the Junk special-use
+	# role always sets $Junk. Training happens in the background, and is best-effort:
+	# failures are logged, and queued training is lost when mox stops. Messages are
+	# not trained during delivery, rspamd's own autolearn can be enabled for that.
+	# (optional)
+	Rspamd:
+
+		# Base URL of the rspamd controller, e.g. http://localhost:11334. Messages are
+		# checked with the checkv2 endpoint, and trained with the learnspam and learnham
+		# endpoints, so this must be the controller (port 11334 by default), not the
+		# normal worker. Must not contain credentials or a query string.
+		URL:
+
+		# Password for the rspamd controller, sent in the Password header of each request.
+		# Training requires the controller's enable_password. Not needed if the controller
+		# allows requests from mox's IP without password, e.g. through secure_ip.
+		# (optional)
+		Password:
+
+		# Timeout for each request to rspamd, e.g. 15s. Default 15s. (optional)
+		Timeout: 0s
+
 # domains.conf
 
 	# NOTE: This config file is in 'sconf' format. Indent with tabs. Comments must be

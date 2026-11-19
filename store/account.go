@@ -2522,7 +2522,7 @@ func (a *Account) MessageAdd(log mlog.Log, tx *bstore.Tx, mb *Mailbox, m *Messag
 
 		// todo optimize: should let us do the tx.Update of m if needed. we should at least merge it with the common case of setting a thread id. and we should try to merge that with the insert by expliciting getting the next id from bstore.
 
-		if err := a.RetrainMessage(context.TODO(), log, tx, jf, m); err != nil {
+		if err := a.retrainMessage(context.TODO(), log, tx, jf, m, false); err != nil {
 			return fmt.Errorf("training junkfilter: %w", err)
 		}
 
