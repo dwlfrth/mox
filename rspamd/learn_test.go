@@ -1,9 +1,11 @@
 package rspamd
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -50,6 +52,37 @@ func TestLearn(t *testing.T) {
 	// 208, a 2xx status, and its message in the error field.
 	test(http.StatusAlreadyReported, `{"error":"<id@example.org> has been already learned as spam, ignore it"}`, "already learned")
 	test(http.StatusOK, `{"success":false}`, "not successful")
+}
+
+// A failed training, e.g. a message rspamd already learned, is logged as not
+// trained, and the message is still closed once.
+func TestLearnOneFailure(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.Copy(io.Discard, r.Body)
+		w.WriteHeader(http.StatusAlreadyReported)
+		w.Write([]byte(`{"error":"<id@example.org> has been already learned as spam, ignore it"}`))
+	}))
+	defer srv.Close()
+
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	msg := &closeCounter{Reader: strings.NewReader("test\r\n")}
+	learnOne(learnJob{
+		log:  mlog.New("rspamd", logger),
+		conf: config.Rspamd{URL: srv.URL},
+		spam: true,
+		open: func() (io.ReadCloser, error) { return msg, nil },
+	})
+	if msg.closes != 1 {
+		t.Fatalf("message closed %d times, expected once", msg.closes)
+	}
+	out := logs.String()
+	if !strings.Contains(out, "training rspamd") || !strings.Contains(out, "already learned") {
+		t.Fatalf("missing log about failed training with rspamd's error, got:\n%s", out)
+	}
+	if strings.Contains(out, "trained rspamd") {
+		t.Fatalf("failed training logged as trained:\n%s", out)
+	}
 }
 
 func TestLearnOneClosesOnce(t *testing.T) {

@@ -1246,6 +1246,32 @@
 			]
 		},
 		{
+			"Name": "RspamdConfigured",
+			"Docs": "RspamdConfigured returns whether rspamd is configured in mox.conf. Unlike\nRspamdStatus, it does not contact rspamd.",
+			"Params": [],
+			"Returns": [
+				{
+					"Name": "r0",
+					"Typewords": [
+						"bool"
+					]
+				}
+			]
+		},
+		{
+			"Name": "RspamdStatus",
+			"Docs": "RspamdStatus returns the status of the rspamd integration: counts in this mox\nprocess, and the status reported by rspamd. If rspamd cannot be reached, the\nerror is returned in the status.",
+			"Params": [],
+			"Returns": [
+				{
+					"Name": "r",
+					"Typewords": [
+						"RspamdStatus"
+					]
+				}
+			]
+		},
+		{
 			"Name": "WebserverConfig",
 			"Docs": "WebserverConfig returns the current webserver config",
 			"Params": [],
@@ -6659,6 +6685,236 @@
 					"Docs": "",
 					"Typewords": [
 						"timestamp"
+					]
+				}
+			]
+		},
+		{
+			"Name": "RspamdStatus",
+			"Docs": "RspamdStatus is the status of the rspamd integration.",
+			"Fields": [
+				{
+					"Name": "Configured",
+					"Docs": "Whether Rspamd is set in mox.conf. Other fields are only set if configured.",
+					"Typewords": [
+						"bool"
+					]
+				},
+				{
+					"Name": "URL",
+					"Docs": "Of the rspamd controller. The password is never included.",
+					"Typewords": [
+						"string"
+					]
+				},
+				{
+					"Name": "Local",
+					"Docs": "Counts in this mox process, since it started.",
+					"Typewords": [
+						"RspamdLocal"
+					]
+				},
+				{
+					"Name": "Reachable",
+					"Docs": "Whether rspamd returned its status.",
+					"Typewords": [
+						"bool"
+					]
+				},
+				{
+					"Name": "Error",
+					"Docs": "If not reachable.",
+					"Typewords": [
+						"string"
+					]
+				},
+				{
+					"Name": "Version",
+					"Docs": "",
+					"Typewords": [
+						"string"
+					]
+				},
+				{
+					"Name": "Uptime",
+					"Docs": "Seconds.",
+					"Typewords": [
+						"int64"
+					]
+				},
+				{
+					"Name": "Scanned",
+					"Docs": "Messages checked by rspamd, since its statistics were reset.",
+					"Typewords": [
+						"int64"
+					]
+				},
+				{
+					"Name": "Learned",
+					"Docs": "Messages learned by rspamd, all classes.",
+					"Typewords": [
+						"int64"
+					]
+				},
+				{
+					"Name": "Actions",
+					"Docs": "Messages checked by rspamd, by action.",
+					"Typewords": [
+						"[]",
+						"RspamdCount"
+					]
+				},
+				{
+					"Name": "Classes",
+					"Docs": "Of classifiers, e.g. spam and ham of Bayes.",
+					"Typewords": [
+						"[]",
+						"RspamdClass"
+					]
+				}
+			]
+		},
+		{
+			"Name": "RspamdLocal",
+			"Docs": "RspamdLocal holds counts about rspamd in this mox process, since it started.",
+			"Fields": [
+				{
+					"Name": "Since",
+					"Docs": "When this mox process started.",
+					"Typewords": [
+						"timestamp"
+					]
+				},
+				{
+					"Name": "Checks",
+					"Docs": "Messages checked, by result: rspamd action applied, or fallback when the junk filter decided instead.",
+					"Typewords": [
+						"[]",
+						"RspamdCount"
+					]
+				},
+				{
+					"Name": "LastCheckError",
+					"Docs": "",
+					"Typewords": [
+						"string"
+					]
+				},
+				{
+					"Name": "LastCheckErrorTime",
+					"Docs": "",
+					"Typewords": [
+						"timestamp"
+					]
+				},
+				{
+					"Name": "LearnQueued",
+					"Docs": "Messages waiting to be sent for training.",
+					"Typewords": [
+						"int32"
+					]
+				},
+				{
+					"Name": "LearnQueueSize",
+					"Docs": "",
+					"Typewords": [
+						"int32"
+					]
+				},
+				{
+					"Name": "LearnOK",
+					"Docs": "",
+					"Typewords": [
+						"int64"
+					]
+				},
+				{
+					"Name": "LearnFailed",
+					"Docs": "Including messages rspamd already learned.",
+					"Typewords": [
+						"int64"
+					]
+				},
+				{
+					"Name": "LearnDropped",
+					"Docs": "Because the queue was full.",
+					"Typewords": [
+						"int64"
+					]
+				},
+				{
+					"Name": "LastLearnError",
+					"Docs": "",
+					"Typewords": [
+						"string"
+					]
+				},
+				{
+					"Name": "LastLearnErrorTime",
+					"Docs": "",
+					"Typewords": [
+						"timestamp"
+					]
+				}
+			]
+		},
+		{
+			"Name": "RspamdCount",
+			"Docs": "RspamdCount is a count for a name, e.g. an rspamd action.",
+			"Fields": [
+				{
+					"Name": "Name",
+					"Docs": "",
+					"Typewords": [
+						"string"
+					]
+				},
+				{
+					"Name": "Count",
+					"Docs": "",
+					"Typewords": [
+						"int64"
+					]
+				}
+			]
+		},
+		{
+			"Name": "RspamdClass",
+			"Docs": "RspamdClass holds the training of one class of an rspamd classifier.",
+			"Fields": [
+				{
+					"Name": "Classifier",
+					"Docs": "E.g. bayes.",
+					"Typewords": [
+						"string"
+					]
+				},
+				{
+					"Name": "Symbol",
+					"Docs": "E.g. BAYES_SPAM.",
+					"Typewords": [
+						"string"
+					]
+				},
+				{
+					"Name": "Class",
+					"Docs": "E.g. spam or ham.",
+					"Typewords": [
+						"string"
+					]
+				},
+				{
+					"Name": "Learned",
+					"Docs": "Messages learned in this class.",
+					"Typewords": [
+						"int64"
+					]
+				},
+				{
+					"Name": "MinLearns",
+					"Docs": "Messages to learn in each class before the classifier is used.",
+					"Typewords": [
+						"int64"
 					]
 				}
 			]

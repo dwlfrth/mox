@@ -36,6 +36,16 @@ const (
 	ActionNoAction       Action = "no action"
 )
 
+// Known returns whether the action is one of the actions known to rspamd by
+// default.
+func (a Action) Known() bool {
+	switch a {
+	case ActionReject, ActionSoftReject, ActionRewriteSubject, ActionAddHeader, ActionGreylist, ActionNoAction:
+		return true
+	}
+	return false
+}
+
 // Symbol is a rule that matched for a message, with its contribution to the
 // score.
 type Symbol struct {
@@ -92,7 +102,10 @@ func Check(ctx context.Context, conf config.Rspamd, req Request, msg io.Reader) 
 	}
 
 	var r Result
-	if err := post(ctx, conf, "/checkv2", hdr, msg, &r); err != nil {
+	start := time.Now()
+	err := post(ctx, conf, "/checkv2", hdr, msg, &r)
+	metricCheckDuration.Observe(float64(time.Since(start)) / float64(time.Second))
+	if err != nil {
 		return Result{}, err
 	}
 	return r, nil
@@ -109,6 +122,12 @@ var httpClient = &http.Client{
 // post sends body to path on the rspamd server and parses a JSON response into
 // result.
 func post(ctx context.Context, conf config.Rspamd, path string, hdr http.Header, body io.Reader, result any) error {
+	return request(ctx, conf, http.MethodPost, path, hdr, body, result)
+}
+
+// request does an HTTP request with method to path on the rspamd server and
+// parses a JSON response into result.
+func request(ctx context.Context, conf config.Rspamd, method, path string, hdr http.Header, body io.Reader, result any) error {
 	timeout := conf.Timeout
 	if timeout <= 0 {
 		timeout = DefaultTimeout
@@ -116,7 +135,7 @@ func post(ctx context.Context, conf config.Rspamd, path string, hdr http.Header,
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimSuffix(conf.URL, "/")+path, body)
+	req, err := http.NewRequestWithContext(ctx, method, strings.TrimSuffix(conf.URL, "/")+path, body)
 	if err != nil {
 		return fmt.Errorf("new request: %w", stripURL(err))
 	}

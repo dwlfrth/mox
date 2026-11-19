@@ -1,7 +1,12 @@
 package smtpserver
 
 import (
+	"bufio"
+	"bytes"
+	"fmt"
 	"io"
+	"mime/quotedprintable"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -13,8 +18,10 @@ import (
 	"github.com/mjl-/bstore"
 
 	"github.com/mjl-/mox/config"
+	"github.com/mjl-/mox/dmarcdb"
 	"github.com/mjl-/mox/dns"
 	"github.com/mjl-/mox/mox-"
+	"github.com/mjl-/mox/rspamd"
 	"github.com/mjl-/mox/smtp"
 	"github.com/mjl-/mox/smtpclient"
 	"github.com/mjl-/mox/store"
@@ -89,24 +96,26 @@ func TestRspamd(t *testing.T) {
 		expErr  *smtpclient.Error    // Nil for accepted delivery.
 		expMbox string               // Mailbox with the delivered message, for accepted delivery.
 		check   func(ts *testserver) // Additional checks.
+
+		expResult string // Recorded check result: the rspamd action applied, or fallback.
 	}{
-		{name: "no action", status: http.StatusOK, body: actionBody("no action"), expMbox: "Inbox"},
-		{name: "add header", status: http.StatusOK, body: actionBody("add header"), expMbox: "Junk"},
-		{name: "rewrite subject", status: http.StatusOK, body: actionBody("rewrite subject"), expMbox: "Junk"},
-		{name: "reject", status: http.StatusOK, body: actionBody("reject"), expErr: &smtpclient.Error{Permanent: true, Code: smtp.C550MailboxUnavail, Secode: smtp.SePol7DeliveryUnauth1}},
-		{name: "soft reject", status: http.StatusOK, body: actionBody("soft reject"), expErr: &smtpclient.Error{Permanent: false, Code: smtp.C451LocalErr, Secode: smtp.SePol7DeliveryUnauth1}},
-		{name: "greylist", status: http.StatusOK, body: actionBody("greylist"), expErr: &smtpclient.Error{Permanent: false, Code: smtp.C451LocalErr, Secode: smtp.SePol7DeliveryUnauth1}},
-		{name: "no junk mailbox", status: http.StatusOK, body: actionBody("add header"), noJunk: true, expErr: fallback},
+		{name: "no action", status: http.StatusOK, body: actionBody("no action"), expMbox: "Inbox", expResult: "no action"},
+		{name: "add header", status: http.StatusOK, body: actionBody("add header"), expMbox: "Junk", expResult: "add header"},
+		{name: "rewrite subject", status: http.StatusOK, body: actionBody("rewrite subject"), expMbox: "Junk", expResult: "rewrite subject"},
+		{name: "reject", status: http.StatusOK, body: actionBody("reject"), expErr: &smtpclient.Error{Permanent: true, Code: smtp.C550MailboxUnavail, Secode: smtp.SePol7DeliveryUnauth1}, expResult: "reject"},
+		{name: "soft reject", status: http.StatusOK, body: actionBody("soft reject"), expErr: &smtpclient.Error{Permanent: false, Code: smtp.C451LocalErr, Secode: smtp.SePol7DeliveryUnauth1}, expResult: "soft reject"},
+		{name: "greylist", status: http.StatusOK, body: actionBody("greylist"), expErr: &smtpclient.Error{Permanent: false, Code: smtp.C451LocalErr, Secode: smtp.SePol7DeliveryUnauth1}, expResult: "greylist"},
+		{name: "no junk mailbox", status: http.StatusOK, body: actionBody("add header"), noJunk: true, expErr: fallback, expResult: "add header"},
 		// Without a usable result, the junk filter decides as without rspamd.
-		{name: "http error", status: http.StatusInternalServerError, body: `{"error":"internal"}`, expErr: fallback},
-		{name: "bad json", status: http.StatusOK, body: `{`, expErr: fallback},
-		{name: "skipped", status: http.StatusOK, body: `{"is_skipped":true,"action":"no action"}`, expErr: fallback},
-		{name: "skipped without action", status: http.StatusOK, body: `{"is_skipped":true}`, expErr: fallback},
-		{name: "skipped reject", status: http.StatusOK, body: skippedBody("reject"), expErr: &smtpclient.Error{Permanent: true, Code: smtp.C550MailboxUnavail, Secode: smtp.SePol7DeliveryUnauth1}},
-		{name: "skipped soft reject", status: http.StatusOK, body: skippedBody("soft reject"), expErr: &smtpclient.Error{Permanent: false, Code: smtp.C451LocalErr, Secode: smtp.SePol7DeliveryUnauth1}},
-		{name: "skipped add header", status: http.StatusOK, body: skippedBody("add header"), expMbox: "Junk"},
-		{name: "unknown action", status: http.StatusOK, body: actionBody("discard"), expErr: fallback},
-		{name: "timeout", status: http.StatusOK, body: actionBody("no action"), delay: 2 * time.Second, expErr: fallback},
+		{name: "http error", status: http.StatusInternalServerError, body: `{"error":"internal"}`, expErr: fallback, expResult: "fallback"},
+		{name: "bad json", status: http.StatusOK, body: `{`, expErr: fallback, expResult: "fallback"},
+		{name: "skipped", status: http.StatusOK, body: `{"is_skipped":true,"action":"no action"}`, expErr: fallback, expResult: "fallback"},
+		{name: "skipped without action", status: http.StatusOK, body: `{"is_skipped":true}`, expErr: fallback, expResult: "fallback"},
+		{name: "skipped reject", status: http.StatusOK, body: skippedBody("reject"), expErr: &smtpclient.Error{Permanent: true, Code: smtp.C550MailboxUnavail, Secode: smtp.SePol7DeliveryUnauth1}, expResult: "reject"},
+		{name: "skipped soft reject", status: http.StatusOK, body: skippedBody("soft reject"), expErr: &smtpclient.Error{Permanent: false, Code: smtp.C451LocalErr, Secode: smtp.SePol7DeliveryUnauth1}, expResult: "soft reject"},
+		{name: "skipped add header", status: http.StatusOK, body: skippedBody("add header"), expMbox: "Junk", expResult: "add header"},
+		{name: "unknown action", status: http.StatusOK, body: actionBody("discard"), expErr: fallback, expResult: "fallback"},
+		{name: "timeout", status: http.StatusOK, body: actionBody("no action"), delay: 2 * time.Second, expErr: fallback, expResult: "fallback"},
 	}
 
 	for _, tc := range tests {
@@ -127,6 +136,8 @@ func TestRspamd(t *testing.T) {
 				tcheck(t, err, "clear junk special-use")
 			}
 
+			before := rspamd.Local().Checks
+
 			ts.run(func(client *smtpclient.Client) {
 				err := client.Deliver(ctxbg, "remote@example.org", "mjl@mox.example", int64(len(deliverMessage)), strings.NewReader(deliverMessage), false, false, false)
 				if tc.expErr == nil {
@@ -140,6 +151,21 @@ func TestRspamd(t *testing.T) {
 				if n := count(ts, tc.expMbox, tc.expMbox == "Junk"); n != 1 {
 					t.Fatalf("got %d messages in %s (junk flag set if Junk), expected 1", n, tc.expMbox)
 				}
+			}
+
+			// Exactly one check is recorded, with the expected result.
+			after := rspamd.Local().Checks
+			for result, n := range after {
+				exp := before[result]
+				if result == tc.expResult {
+					exp++
+				}
+				if n != exp {
+					t.Errorf("check result %q: got count %d, expected %d", result, n, exp)
+				}
+			}
+			if after[tc.expResult] != before[tc.expResult]+1 {
+				t.Errorf("check result %q not recorded", tc.expResult)
 			}
 
 			fake.Lock()
@@ -219,4 +245,313 @@ func TestRspamdMultipleRecipients(t *testing.T) {
 	if got := h.Get("Password"); got != "" {
 		t.Errorf("got password header %q without password configured", got)
 	}
+}
+
+// The symbols in X-Mox-Reason are the 10 with the largest absolute score, ties
+// sorted by name.
+func TestRspamdSymbols(t *testing.T) {
+	symbols := map[string]rspamd.Symbol{}
+	for i, name := range []string{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J"} {
+		symbols[name] = rspamd.Symbol{Score: float64(i + 1)}
+	}
+	symbols["NEG"] = rspamd.Symbol{Score: -20}
+	symbols["TIE_B"] = rspamd.Symbol{Score: 5}
+	symbols["ZERO"] = rspamd.Symbol{Score: 0}
+	got := rspamdSymbols(symbols)
+	exp := "NEG -20.00, J 10.00, I 9.00, H 8.00, G 7.00, F 6.00, E 5.00, TIE_B 5.00, D 4.00, C 3.00"
+	if got != exp {
+		t.Fatalf("got %q, expected %q", got, exp)
+	}
+	if got := rspamdSymbols(nil); got != "(none)" {
+		t.Fatalf("got %q for no symbols, expected (none)", got)
+	}
+}
+
+// A client that greets with an IP address literal, e.g. "EHLO [127.0.0.10]", is
+// passed to rspamd as that address literal.
+func TestRspamdHeloAddressLiteral(t *testing.T) {
+	resolver := dns.MockResolver{
+		A: map[string][]string{
+			"example.org.": {"127.0.0.10"}, // For mx check.
+		},
+	}
+
+	fake := &fakeRspamd{status: http.StatusOK, body: `{"action":"no action","score":0,"required_score":15}`}
+	srv := httptest.NewServer(fake)
+	defer srv.Close()
+
+	ts := newTestServer(t, filepath.FromSlash("../testdata/smtp/mox.conf"), resolver)
+	defer ts.close()
+	mox.Conf.Static.Rspamd = &config.Rspamd{URL: srv.URL}
+	defer func() {
+		mox.Conf.Static.Rspamd = nil
+	}()
+
+	ts.runRaw(func(conn net.Conn) {
+		defer conn.Close()
+		br := bufio.NewReader(conn)
+		// Reads a possibly multiline reply, returning its last line.
+		reply := func() string {
+			for {
+				line, err := br.ReadString('\n')
+				tcheck(t, err, "read reply")
+				if len(line) < 4 || line[3] != '-' {
+					return strings.TrimRight(line, "\r\n")
+				}
+			}
+		}
+		cmd := func(s, expCode string) {
+			t.Helper()
+			_, err := fmt.Fprintf(conn, "%s\r\n", s)
+			tcheck(t, err, "write command")
+			if line := reply(); !strings.HasPrefix(line, expCode) {
+				t.Fatalf("%s: got reply %q, expected code %s", s, line, expCode)
+			}
+		}
+		if line := reply(); !strings.HasPrefix(line, "220") {
+			t.Fatalf("got greeting %q", line)
+		}
+		cmd("EHLO [127.0.0.10]", "250")
+		cmd("MAIL FROM:<remote@example.org>", "250")
+		cmd("RCPT TO:<mjl@mox.example>", "250")
+		cmd("DATA", "354")
+		msg := strings.ReplaceAll(strings.TrimRight(deliverMessage, "\r\n"), "\n.", "\n..")
+		cmd(msg+"\r\n.", "250")
+		cmd("QUIT", "221")
+	})
+
+	fake.Lock()
+	defer fake.Unlock()
+	if len(fake.headers) != 1 {
+		t.Fatalf("got %d requests to rspamd, expected 1", len(fake.headers))
+	}
+	if got := fake.headers[0].Get("Helo"); got != "[127.0.0.10]" {
+		t.Fatalf("got helo header %q, expected [127.0.0.10]", got)
+	}
+}
+
+// With rspamd configured, rspamd's verdict decides instead of mox's own checks:
+// DMARC reject policies, reputation of the sender's domain, and reputation of
+// known contacts.
+func TestRspamdBeforeMoxChecks(t *testing.T) {
+	resolver := &dns.MockResolver{
+		A: map[string][]string{
+			"example.org.": {"127.0.0.10"}, // For mx check.
+		},
+		TXT: map[string][]string{
+			"example.org.":        {"v=spf1 ip4:127.0.0.10 -all"},
+			"_dmarc.example.org.": {"v=DMARC1;p=reject"},
+		},
+		PTR: map[string][]string{
+			"127.0.0.10": {"example.org."},
+		},
+	}
+
+	fake := &fakeRspamd{status: http.StatusOK}
+	srv := httptest.NewServer(fake)
+	defer srv.Close()
+
+	ts := newTestServer(t, filepath.FromSlash("../testdata/smtp/mox.conf"), resolver)
+	defer ts.close()
+
+	deliver := func(action string, expErr *smtpclient.Error) {
+		t.Helper()
+		fake.Lock()
+		fake.body = `{"action":"` + action + `","score":1,"required_score":15}`
+		fake.paths = nil
+		fake.Unlock()
+		mox.Conf.Static.Rspamd = &config.Rspamd{URL: srv.URL}
+		defer func() {
+			mox.Conf.Static.Rspamd = nil
+		}()
+		ts.run(func(client *smtpclient.Client) {
+			err := client.Deliver(ctxbg, "remote@example.org", "mjl@mox.example", int64(len(deliverMessage)), strings.NewReader(deliverMessage), false, false, false)
+			if expErr == nil {
+				tcheck(t, err, "deliver")
+			} else {
+				ts.smtpErr(err, expErr)
+			}
+		})
+		fake.Lock()
+		defer fake.Unlock()
+		if len(fake.paths) != 1 {
+			t.Fatalf("got %d requests to rspamd, expected 1", len(fake.paths))
+		}
+	}
+	upstream := func(expErr *smtpclient.Error) {
+		t.Helper()
+		ts.run(func(client *smtpclient.Client) {
+			err := client.Deliver(ctxbg, "remote@example.org", "mjl@mox.example", int64(len(deliverMessage)), strings.NewReader(deliverMessage), false, false, false)
+			if expErr == nil {
+				tcheck(t, err, "deliver")
+			} else {
+				ts.smtpErr(err, expErr)
+			}
+		})
+	}
+	reject := &smtpclient.Error{Permanent: true, Code: smtp.C550MailboxUnavail, Secode: smtp.SePol7DeliveryUnauth1}
+
+	// DMARC fails (SPF fail, no DKIM) with a reject policy. Without rspamd, mox
+	// rejects the message. With rspamd, rspamd decides.
+	resolver.TXT["example.org."] = []string{"v=spf1 ip4:127.0.0.1 -all"}
+	upstream(&smtpclient.Error{Permanent: true, Code: smtp.C550MailboxUnavail, Secode: smtp.SePol7MultiAuthFails26})
+	deliver("no action", nil)
+	resolver.TXT["example.org."] = []string{"v=spf1 ip4:127.0.0.10 -all"}
+
+	// Good reputation of the sender's domain, from another address at the domain.
+	// Without rspamd, mox accepts the message. With rspamd, rspamd decides.
+	for range 3 {
+		m := store.Message{
+			Received:         time.Now(),
+			MsgFromLocalpart: smtp.Localpart("other"),
+			MsgFromDomain:    "example.org",
+			MsgFromOrgDomain: "example.org",
+			MsgFromValidated: true,
+			Flags:            store.Flags{Notjunk: true},
+			Size:             int64(len(deliverMessage)),
+		}
+		tinsertmsg(t, ts.acc, "Inbox", &m, deliverMessage)
+	}
+	upstream(nil)
+	deliver("reject", reject)
+
+	// A known contact: we sent a message to the sender. Without rspamd, mox accepts
+	// the message. With rspamd, rspamd decides.
+	sentMsg := store.Message{Size: int64(len(deliverMessage))}
+	tinsertmsg(t, ts.acc, "Sent", &sentMsg, deliverMessage)
+	err := ts.acc.DB.Insert(ctxbg, &store.Recipient{MessageID: sentMsg.ID, Localpart: "remote", Domain: "example.org", OrgDomain: "example.org", Sent: time.Now()})
+	tcheck(t, err, "inserting message recipient")
+	upstream(nil)
+	deliver("reject", reject)
+}
+
+// The delivery rate limits still apply before rspamd is consulted.
+func TestRspamdAfterRateLimit(t *testing.T) {
+	resolver := dns.MockResolver{
+		A: map[string][]string{
+			"example.org.": {"127.0.0.10"}, // For mx check.
+		},
+		PTR: map[string][]string{
+			"127.0.0.10": {"example.org."},
+		},
+	}
+	fake := &fakeRspamd{status: http.StatusOK, body: `{"action":"no action","score":0,"required_score":15}`}
+	srv := httptest.NewServer(fake)
+	defer srv.Close()
+
+	ts := newTestServer(t, filepath.FromSlash("../testdata/smtp/mox.conf"), resolver)
+	defer ts.close()
+	mox.Conf.Static.Rspamd = &config.Rspamd{URL: srv.URL}
+	defer func() {
+		mox.Conf.Static.Rspamd = nil
+	}()
+
+	orig := limitIPMasked1MessagesPerMinute
+	limitIPMasked1MessagesPerMinute = 1
+	defer func() {
+		limitIPMasked1MessagesPerMinute = orig
+	}()
+
+	ts.run(func(client *smtpclient.Client) {
+		err := client.Deliver(ctxbg, "remote@example.org", "mjl@mox.example", int64(len(deliverMessage)), strings.NewReader(deliverMessage), false, false, false)
+		tcheck(t, err, "deliver")
+		err = client.Deliver(ctxbg, "remote@example.org", "mjl@mox.example", int64(len(deliverMessage)), strings.NewReader(deliverMessage), false, false, false)
+		ts.smtpErr(err, &smtpclient.Error{Permanent: false, Code: smtp.C452StorageFull, Secode: smtp.SeMailbox2Full2})
+	})
+
+	fake.Lock()
+	defer fake.Unlock()
+	if len(fake.paths) != 1 {
+		t.Fatalf("got %d requests to rspamd, expected 1, only for the message within the rate limit", len(fake.paths))
+	}
+}
+
+// DMARC reports are processed by mox, also with rspamd configured, without
+// consulting rspamd.
+func TestRspamdDMARCReport(t *testing.T) {
+	resolver := &dns.MockResolver{
+		A: map[string][]string{
+			"example.org.": {"127.0.0.10"}, // For mx check.
+		},
+		TXT: map[string][]string{
+			"example.org.":        {"v=spf1 ip4:127.0.0.10 -all"},
+			"_dmarc.example.org.": {"v=DMARC1;p=reject; rua=mailto:dmarcrpt@example.org"},
+		},
+		PTR: map[string][]string{
+			"127.0.0.10": {"example.org."},
+		},
+	}
+	fake := &fakeRspamd{status: http.StatusOK, body: `{"action":"reject","score":20,"required_score":15}`}
+	srv := httptest.NewServer(fake)
+	defer srv.Close()
+
+	ts := newTestServer(t, filepath.FromSlash("../testdata/smtp/dmarcreport/mox.conf"), resolver)
+	defer ts.close()
+	mox.Conf.Static.Rspamd = &config.Rspamd{URL: srv.URL}
+	defer func() {
+		mox.Conf.Static.Rspamd = nil
+	}()
+
+	report := strings.ReplaceAll(dmarcReport, "xmox.nl", "mox.example")
+	msgb := &bytes.Buffer{}
+	fmt.Fprintf(msgb, "From: remote@example.org\r\nTo: dmarc-reports@mox.example\r\nSubject: dmarc report\r\nMIME-Version: 1.0\r\nContent-Type: text/xml\r\n\r\n")
+	w := quotedprintable.NewWriter(msgb)
+	w.Write([]byte(strings.ReplaceAll(report, "\n", "\r\n")))
+	w.Close()
+	msg := msgb.String()
+
+	ts.run(func(client *smtpclient.Client) {
+		err := client.Deliver(ctxbg, "remote@example.org", "dmarc-reports@mox.example", int64(len(msg)), strings.NewReader(msg), false, false, false)
+		tcheck(t, err, "deliver")
+	})
+	records, err := dmarcdb.Records(ctxbg)
+	tcheck(t, err, "dmarcdb records")
+	if len(records) != 1 {
+		t.Fatalf("got %d dmarc report records, expected 1", len(records))
+	}
+
+	fake.Lock()
+	defer fake.Unlock()
+	if len(fake.paths) != 0 {
+		t.Fatalf("got %d requests to rspamd for a dmarc report, expected none", len(fake.paths))
+	}
+}
+
+// Mailing list allow rules accept messages without mox's further checks, but with
+// rspamd configured, rspamd decides.
+func TestRspamdListAllow(t *testing.T) {
+	resolver := &dns.MockResolver{
+		A: map[string][]string{
+			"example.org.": {"127.0.0.10"}, // For mx check.
+		},
+		TXT: map[string][]string{
+			"example.org.": {"v=spf1 ip4:127.0.0.10 -all"},
+		},
+	}
+	fake := &fakeRspamd{status: http.StatusOK, body: `{"action":"reject","score":20,"required_score":15}`}
+	srv := httptest.NewServer(fake)
+	defer srv.Close()
+
+	ts := newTestServer(t, filepath.FromSlash("../testdata/smtp/mox.conf"), resolver)
+	defer ts.close()
+
+	// No PTR record: without the list allow rule, the junk filter would reject.
+	deliver := func(expErr *smtpclient.Error) {
+		t.Helper()
+		ts.run(func(client *smtpclient.Client) {
+			err := client.Deliver(ctxbg, "remote@example.org", "list@mox.example", int64(len(deliverMessage)), strings.NewReader(deliverMessage), false, false, false)
+			if expErr == nil {
+				tcheck(t, err, "deliver")
+			} else {
+				ts.smtpErr(err, expErr)
+			}
+		})
+	}
+	deliver(nil)
+
+	mox.Conf.Static.Rspamd = &config.Rspamd{URL: srv.URL}
+	defer func() {
+		mox.Conf.Static.Rspamd = nil
+	}()
+	deliver(&smtpclient.Error{Permanent: true, Code: smtp.C550MailboxUnavail, Secode: smtp.SePol7DeliveryUnauth1})
 }

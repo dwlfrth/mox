@@ -62,6 +62,7 @@ import (
 	"github.com/mjl-/mox/mtastsdb"
 	"github.com/mjl-/mox/publicsuffix"
 	"github.com/mjl-/mox/queue"
+	"github.com/mjl-/mox/rspamd"
 	"github.com/mjl-/mox/smtp"
 	"github.com/mjl-/mox/spf"
 	"github.com/mjl-/mox/store"
@@ -2312,6 +2313,115 @@ func (Admin) LogLevelRemove(ctx context.Context, pkg string) {
 // CheckUpdatesEnabled returns whether checking for updates is enabled.
 func (Admin) CheckUpdatesEnabled(ctx context.Context) bool {
 	return mox.Conf.Static.CheckUpdates
+}
+
+// RspamdStatus is the status of the rspamd integration.
+type RspamdStatus struct {
+	Configured bool   // Whether Rspamd is set in mox.conf. Other fields are only set if configured.
+	URL        string // Of the rspamd controller. The password is never included.
+
+	Local RspamdLocal // Counts in this mox process, since it started.
+
+	Reachable bool   // Whether rspamd returned its status.
+	Error     string // If not reachable.
+	Version   string
+	Uptime    int64         // Seconds.
+	Scanned   int64         // Messages checked by rspamd, since its statistics were reset.
+	Learned   int64         // Messages learned by rspamd, all classes.
+	Actions   []RspamdCount // Messages checked by rspamd, by action.
+	Classes   []RspamdClass // Of classifiers, e.g. spam and ham of Bayes.
+}
+
+// RspamdLocal holds counts about rspamd in this mox process, since it started.
+type RspamdLocal struct {
+	Since              time.Time     // When this mox process started.
+	Checks             []RspamdCount // Messages checked, by result: rspamd action applied, or fallback when the junk filter decided instead.
+	LastCheckError     string
+	LastCheckErrorTime time.Time
+	LearnQueued        int // Messages waiting to be sent for training.
+	LearnQueueSize     int
+	LearnOK            int64
+	LearnFailed        int64 // Including messages rspamd already learned.
+	LearnDropped       int64 // Because the queue was full.
+	LastLearnError     string
+	LastLearnErrorTime time.Time
+}
+
+// RspamdCount is a count for a name, e.g. an rspamd action.
+type RspamdCount struct {
+	Name  string
+	Count int64
+}
+
+// RspamdClass holds the training of one class of an rspamd classifier.
+type RspamdClass struct {
+	Classifier string // E.g. bayes.
+	Symbol     string // E.g. BAYES_SPAM.
+	Class      string // E.g. spam or ham.
+	Learned    int64  // Messages learned in this class.
+	MinLearns  int64  // Messages to learn in each class before the classifier is used.
+}
+
+// rspamdCounts returns the counts in m sorted by name.
+func rspamdCounts(m map[string]int64) []RspamdCount {
+	l := make([]RspamdCount, 0, len(m))
+	for name, n := range m {
+		l = append(l, RspamdCount{name, n})
+	}
+	sort.Slice(l, func(i, j int) bool { return l[i].Name < l[j].Name })
+	return l
+}
+
+// RspamdConfigured returns whether rspamd is configured in mox.conf. Unlike
+// RspamdStatus, it does not contact rspamd.
+func (Admin) RspamdConfigured(ctx context.Context) bool {
+	return mox.Conf.Static.Rspamd != nil
+}
+
+// RspamdStatus returns the status of the rspamd integration: counts in this mox
+// process, and the status reported by rspamd. If rspamd cannot be reached, the
+// error is returned in the status.
+func (Admin) RspamdStatus(ctx context.Context) (r RspamdStatus) {
+	conf := mox.Conf.Static.Rspamd
+	if conf == nil {
+		return
+	}
+	r.Configured = true
+	r.URL = conf.URL
+
+	l := rspamd.Local()
+	r.Local = RspamdLocal{
+		Since:              l.Since,
+		Checks:             rspamdCounts(l.Checks),
+		LastCheckError:     l.LastCheckError,
+		LastCheckErrorTime: l.LastCheckErrorTime,
+		LearnQueued:        l.LearnQueued,
+		LearnQueueSize:     l.LearnQueueSize,
+		LearnOK:            l.LearnOK,
+		LearnFailed:        l.LearnFailed,
+		LearnDropped:       l.LearnDropped,
+		LastLearnError:     l.LastLearnError,
+		LastLearnErrorTime: l.LastLearnErrorTime,
+	}
+
+	// Keep the admin page responsive if rspamd is slow or unreachable.
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	stat, err := rspamd.GetStat(ctx, *conf)
+	if err != nil {
+		r.Error = err.Error()
+		return
+	}
+	r.Reachable = true
+	r.Version = stat.Version
+	r.Uptime = stat.Uptime
+	r.Scanned = stat.Scanned
+	r.Learned = stat.Learned
+	r.Actions = rspamdCounts(stat.Actions)
+	for _, sf := range stat.Statfiles {
+		r.Classes = append(r.Classes, RspamdClass{sf.Classifier.Name, sf.Symbol, sf.Class, sf.Learned(), sf.Classifier.MinLearns})
+	}
+	return
 }
 
 // WebserverConfig is the combination of WebDomainRedirects and WebHandlers

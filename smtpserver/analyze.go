@@ -217,7 +217,35 @@ func analyze(ctx context.Context, log mlog.Log, resolver dns.Resolver, d deliver
 	if rs != nil {
 		mailbox = rs.Mailbox
 	}
-	if rs != nil && !rs.ListAllowDNSDomain.IsZero() {
+
+	// With rspamd configured, the rspamd verdict decides about delivery, instead of
+	// mox's own checks below: mailing list allow rules, DMARC reject policies,
+	// reputation, subjectpass, the junk filter and DNSBLs. The delivery rate limits
+	// above still apply. Not for addresses that receive DMARC and TLS reports, which
+	// mox processes, and not for a destination's required message authentication.
+	// If rspamd does not give a usable verdict, the checks below decide, as without
+	// rspamd.
+	var rspamdResult *rspamd.Result
+	if d.rspamdCheck != nil && !d.destination.DMARCReports && !d.destination.HostTLSReports && !d.destination.DomainTLSReports {
+		result, rerr := d.rspamdCheck()
+		// rspamd also sets is_skipped when a prefilter decided early, e.g. GTUBE,
+		// with a verdict in the action that we must apply. Only a skip without a
+		// verdict means rspamd did not judge the message.
+		if rerr == nil && result.IsSkipped && (result.Action == "" || result.Action == rspamd.ActionNoAction) {
+			rerr = errors.New("rspamd skipped message")
+		} else if rerr == nil && !result.Action.Known() {
+			rerr = fmt.Errorf("unknown action %q", result.Action)
+		}
+		if rerr != nil {
+			rspamd.CheckResult(rspamd.ResultFallback, rerr)
+			log.Errorx("rspamd check failed, continuing without rspamd", rerr)
+			addReasonText("rspamd: error, continuing without rspamd: %v", rerr)
+		} else {
+			rspamdResult = &result
+		}
+	}
+
+	if rspamdResult == nil && rs != nil && !rs.ListAllowDNSDomain.IsZero() {
 		// todo: on temporary failures, reject temporarily?
 		if isListDomain(d, rs.ListAllowDNSDomain) {
 			addReasonText("validated message from a configured mailing list")
@@ -283,7 +311,7 @@ func analyze(ctx context.Context, log mlog.Log, resolver dns.Resolver, d deliver
 		return analysis{d, accept, mailbox, mailboxDestined, code, secode, err == nil, errmsg, err, nil, nil, reason, reasonText, dmarcOverrideReason, headers}
 	}
 
-	if d.dmarcUse && d.dmarcResult.Reject {
+	if rspamdResult == nil && d.dmarcUse && d.dmarcResult.Reject {
 		addReasonText("message does not pass domain dmarc policy which asks to reject")
 		return reject(smtp.C550MailboxUnavail, smtp.SePol7MultiAuthFails26, "rejecting per dmarc policy", nil, reasonDMARCPolicy)
 	} else if !d.dmarcUse {
@@ -385,6 +413,69 @@ func analyze(ctx context.Context, log mlog.Log, resolver dns.Resolver, d deliver
 		}
 		addReasonText("message does not pass required aligned spf and/or dkim check required for destination")
 		return reject(code, smtp.SePol7MultiAuthFails26, msg, nil, reasonMsgAuthRequired)
+	}
+
+	if rspamdResult != nil {
+		result := *rspamdResult
+		log.Info("rspamd analyzed",
+			slog.String("action", string(result.Action)),
+			slog.Float64("score", result.Score),
+			slog.Float64("requiredscore", result.RequiredScore))
+		addReasonText("rspamd: action %s, score %.2f, required %.2f, symbols: %s", result.Action, result.Score, result.RequiredScore, rspamdSymbols(result.Symbols))
+		rspamd.CheckResult(string(result.Action), nil)
+
+		accept := func(mailbox, reason string) analysis {
+			return analysis{
+				d:                   d,
+				accept:              true,
+				mailbox:             mailbox,
+				mailboxDestined:     mailboxDestined,
+				reason:              reason,
+				reasonText:          reasonText,
+				dmarcOverrideReason: dmarcOverrideReason,
+				headers:             headers,
+			}
+		}
+
+		switch result.Action {
+		case rspamd.ActionReject:
+			return reject(smtp.C550MailboxUnavail, smtp.SePol7DeliveryUnauth1, "rejected as spam", nil, reasonRspamdReject)
+		case rspamd.ActionSoftReject, rspamd.ActionGreylist:
+			return reject(smtp.C451LocalErr, smtp.SePol7DeliveryUnauth1, "try again later", nil, reasonRspamdSoftReject)
+		case rspamd.ActionAddHeader, rspamd.ActionRewriteSubject:
+			var junkMailbox string
+			var mbErr error
+			d.acc.WithRLock(func() {
+				mbErr = d.acc.DB.Read(ctx, func(tx *bstore.Tx) error {
+					mb, qerr := bstore.QueryTx[store.Mailbox](tx).FilterEqual("Expunged", false).FilterEqual("Junk", true).Get()
+					if qerr == bstore.ErrAbsent {
+						return nil
+					} else if qerr != nil {
+						return qerr
+					}
+					junkMailbox = mb.Name
+					return nil
+				})
+			})
+			if mbErr != nil {
+				log.Errorx("finding junk mailbox", mbErr)
+				addReasonText("finding junk mailbox: %v", mbErr)
+				return reject(smtp.C451LocalErr, smtp.SeSys3Other0, "error processing", mbErr, reasonRspamdJunk)
+			} else if junkMailbox == "" {
+				log.Info("no mailbox with junk special-use role to deliver rspamd junk to, rejecting")
+				addReasonText("no junk mailbox to deliver to")
+				return reject(smtp.C451LocalErr, smtp.SeSys3Other0, "error processing", nil, reasonRspamdJunk)
+			}
+			if mailboxDestined == "" {
+				mailboxDestined = mailbox
+			}
+			d.m.Junk = true
+			d.m.Notjunk = false
+			return accept(junkMailbox, reasonRspamdJunk)
+		case rspamd.ActionNoAction:
+			return accept(mailbox, reasonRspamdPass)
+		}
+		// Not reached: unknown actions are handled as a fallback when calling rspamd.
 	}
 
 	// Determine if message is acceptable based on DMARC domain, DKIM identities, or
@@ -523,84 +614,6 @@ func analyze(ctx context.Context, log mlog.Log, resolver dns.Resolver, d deliver
 				reasonText:          reasonText,
 				dmarcOverrideReason: dmarcOverrideReason,
 				headers:             headers,
-			}
-		}
-	}
-
-	// With rspamd configured, it decides about messages that the checks above did not
-	// decide on, instead of the junk filter and DNSBLs below. If rspamd does not give
-	// a usable result, we continue below as without rspamd.
-	if d.rspamdCheck != nil {
-		result, rerr := d.rspamdCheck()
-		// rspamd also sets is_skipped when a prefilter decided early, e.g. GTUBE,
-		// with a verdict in the action that we must apply. Only a skip without a
-		// verdict means rspamd did not judge the message.
-		if rerr == nil && result.IsSkipped && (result.Action == "" || result.Action == rspamd.ActionNoAction) {
-			rerr = errors.New("rspamd skipped message")
-		}
-		if rerr != nil {
-			log.Errorx("rspamd check failed, continuing with junk filter", rerr)
-			addReasonText("rspamd: error, continuing with junk filter: %v", rerr)
-		} else {
-			log.Info("rspamd analyzed",
-				slog.String("action", string(result.Action)),
-				slog.Float64("score", result.Score),
-				slog.Float64("requiredscore", result.RequiredScore))
-			addReasonText("rspamd: action %s, score %.2f, required %.2f, symbols: %s", result.Action, result.Score, result.RequiredScore, rspamdSymbols(result.Symbols))
-
-			accept := func(mailbox, reason string) analysis {
-				return analysis{
-					d:                   d,
-					accept:              true,
-					mailbox:             mailbox,
-					mailboxDestined:     mailboxDestined,
-					reason:              reason,
-					reasonText:          reasonText,
-					dmarcOverrideReason: dmarcOverrideReason,
-					headers:             headers,
-				}
-			}
-
-			switch result.Action {
-			case rspamd.ActionReject:
-				return reject(smtp.C550MailboxUnavail, smtp.SePol7DeliveryUnauth1, "rejected as spam", nil, reasonRspamdReject)
-			case rspamd.ActionSoftReject, rspamd.ActionGreylist:
-				return reject(smtp.C451LocalErr, smtp.SePol7DeliveryUnauth1, "try again later", nil, reasonRspamdSoftReject)
-			case rspamd.ActionAddHeader, rspamd.ActionRewriteSubject:
-				var junkMailbox string
-				var mbErr error
-				d.acc.WithRLock(func() {
-					mbErr = d.acc.DB.Read(ctx, func(tx *bstore.Tx) error {
-						mb, qerr := bstore.QueryTx[store.Mailbox](tx).FilterEqual("Expunged", false).FilterEqual("Junk", true).Get()
-						if qerr == bstore.ErrAbsent {
-							return nil
-						} else if qerr != nil {
-							return qerr
-						}
-						junkMailbox = mb.Name
-						return nil
-					})
-				})
-				if mbErr != nil {
-					log.Errorx("finding junk mailbox", mbErr)
-					addReasonText("finding junk mailbox: %v", mbErr)
-					return reject(smtp.C451LocalErr, smtp.SeSys3Other0, "error processing", mbErr, reasonRspamdJunk)
-				} else if junkMailbox == "" {
-					log.Info("no mailbox with junk special-use role to deliver rspamd junk to, rejecting")
-					addReasonText("no junk mailbox to deliver to")
-					return reject(smtp.C451LocalErr, smtp.SeSys3Other0, "error processing", nil, reasonRspamdJunk)
-				}
-				if mailboxDestined == "" {
-					mailboxDestined = mailbox
-				}
-				d.m.Junk = true
-				d.m.Notjunk = false
-				return accept(junkMailbox, reasonRspamdJunk)
-			case rspamd.ActionNoAction:
-				return accept(mailbox, reasonRspamdPass)
-			default:
-				log.Error("unknown rspamd action, continuing with junk filter", slog.String("action", string(result.Action)))
-				addReasonText("rspamd: unknown action, continuing with junk filter")
 			}
 		}
 	}
